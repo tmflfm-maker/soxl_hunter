@@ -5,6 +5,7 @@ import numpy as np
 from datetime import datetime
 import json
 import os
+import time
 
 # -----------------------------------------------------------------------------
 # 1. 페이지 설정 및 스타일
@@ -32,55 +33,72 @@ st.markdown("""
 check_years = 3
 
 # -----------------------------------------------------------------------------
-# 2. 데이터 가져오기 및 처리
+# 2. 데이터 가져오기 및 처리 (강화된 버전)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def get_data():
-    df = yf.download("SOXL", period=f"{check_years}y", interval="1d", progress=False)
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    
-    # 기술적 지표 계산
-    df['MA20'] = df['Close'].rolling(window=20).mean()
-    df['MA120'] = df['Close'].rolling(window=120).mean()
-    df['MA200'] = df['Close'].rolling(window=200).mean()
-    
-    # 볼린저 밴드
-    df['BB_Mid'] = df['MA20']
-    df['BB_Std'] = df['Close'].rolling(window=20).std()
-    df['BB_Lower'] = df['BB_Mid'] - (2 * df['BB_Std'])
-    denom = (df['BB_Mid'] + (2 * df['BB_Std'])) - df['BB_Lower']
-    df['Pct_B'] = np.where(denom == 0, 0, (df['Close'] - df['BB_Lower']) / denom)
+    # [수정됨] 데이터를 최대 3번까지 재시도하며 가져옵니다.
+    for attempt in range(3):
+        try:
+            df = yf.download("SOXL", period=f"{check_years}y", interval="1d", progress=False)
+            
+            # 데이터가 비어있으면 건너뛰고 재시도
+            if df.empty or len(df) < 20:
+                time.sleep(1) # 1초 대기 후 재시도
+                continue
 
-    # RSI
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
-    
-    # RSI2 (Blitz)
-    gain2 = (delta.where(delta > 0, 0)).rolling(window=2).mean()
-    loss2 = (-delta.where(delta < 0, 0)).rolling(window=2).mean()
-    rs2 = gain2 / loss2
-    df['RSI2'] = 100 - (100 / (1 + rs2))
-    
-    # Sigma
-    df['Return'] = df['Close'].pct_change()
-    mean_20 = df['Return'].rolling(window=20).mean()
-    std_20 = df['Return'].rolling(window=20).std()
-    df['Sigma'] = (df['Return'] - mean_20) / std_20
-    
-    mean_60 = df['Return'].rolling(window=60).mean()
-    std_60 = df['Return'].rolling(window=60).std()
-    df['Sigma60'] = (df['Return'] - mean_60) / std_60
-    
-    # Volume
-    df['VolMA20'] = df['Volume'].rolling(window=20).mean()
-    df['Vol_Ratio'] = df['Volume'] / df['VolMA20']
-    df['Is_Yangbong'] = df['Close'] > df['Open']
-    
-    return df
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            
+            # 기술적 지표 계산
+            df['MA20'] = df['Close'].rolling(window=20).mean()
+            df['MA120'] = df['Close'].rolling(window=120).mean()
+            df['MA200'] = df['Close'].rolling(window=200).mean()
+            
+            # 볼린저 밴드
+            df['BB_Mid'] = df['MA20']
+            df['BB_Std'] = df['Close'].rolling(window=20).std()
+            df['BB_Lower'] = df['BB_Mid'] - (2 * df['BB_Std'])
+            denom = (df['BB_Mid'] + (2 * df['BB_Std'])) - df['BB_Lower']
+            df['Pct_B'] = np.where(denom == 0, 0, (df['Close'] - df['BB_Lower']) / denom)
+
+            # RSI
+            delta = df['Close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            df['RSI'] = 100 - (100 / (1 + rs))
+            
+            # RSI2 (Blitz)
+            gain2 = (delta.where(delta > 0, 0)).rolling(window=2).mean()
+            loss2 = (-delta.where(delta < 0, 0)).rolling(window=2).mean()
+            rs2 = gain2 / loss2
+            df['RSI2'] = 100 - (100 / (1 + rs2))
+            
+            # Sigma
+            df['Return'] = df['Close'].pct_change()
+            mean_20 = df['Return'].rolling(window=20).mean()
+            std_20 = df['Return'].rolling(window=20).std()
+            df['Sigma'] = (df['Return'] - mean_20) / std_20
+            
+            mean_60 = df['Return'].rolling(window=60).mean()
+            std_60 = df['Return'].rolling(window=60).std()
+            df['Sigma60'] = (df['Return'] - mean_60) / std_60
+            
+            # Volume
+            df['VolMA20'] = df['Volume'].rolling(window=20).mean()
+            df['Vol_Ratio'] = df['Volume'] / df['VolMA20']
+            df['Is_Yangbong'] = df['Close'] > df['Open']
+            
+            # 성공하면 데이터 반환
+            return df
+            
+        except Exception:
+            time.sleep(1) # 에러 발생 시 1초 대기 후 재시도
+            continue
+
+    # 3번 다 실패하면 None 반환
+    return None
 
 # -----------------------------------------------------------------------------
 # 3. 지갑 관리 시스템
@@ -118,9 +136,9 @@ def update_cash(strategy_type, amount, action):
 try:
     df = get_data()
 
-    # [수정된 부분] 데이터 안전장치 추가 (데이터가 없거나 2줄 미만이면 중단)
+    # [수정된 부분] 데이터 안전장치
     if df is None or len(df) < 2:
-        st.error("📉 야후 파이낸스 데이터 연결이 불안정합니다. 잠시 후 왼쪽 사이드바의 '데이터/잔고 갱신' 버튼을 눌러주세요.")
+        st.error("📉 야후 파이낸스 연결이 원활하지 않습니다. (3회 재시도 실패). 잠시 후 왼쪽 사이드바의 '데이터/잔고 갱신' 버튼을 눌러주세요.")
         st.stop()
 
     today = df.iloc[-1]
@@ -130,7 +148,7 @@ try:
     # --- [사이드바] 네비게이션 및 자산 관리 ---
     st.sidebar.title("🦅 SOXL Hunter V6")
     
-    # [메뉴 선택 기능 추가] 여기가 핵심입니다.
+    # [메뉴 선택 기능]
     menu = st.sidebar.radio("📌 메뉴 선택", ["🚀 대시보드 (Signal)", "📊 백테스트 상세 분석"])
     
     st.sidebar.markdown("---")
@@ -159,7 +177,7 @@ try:
         st.title("🦅 오늘의 매수 신호 (Dashboard)")
         st.markdown("---")
 
-        # 1. 상단 정보창 (HTML 스타일 통일: 모두 굵고 크게)
+        # 1. 상단 정보창
         change_val = current_price - prev['Close']
         change_pct = (change_val / prev['Close']) * 100
         
@@ -175,7 +193,7 @@ try:
 
         c1, c2, c3, c4 = st.columns(4)
         
-       # c1: 현재가 (전일대비 문구 추가)
+       # c1: 현재가
         with c1:
             st.markdown(f"""
             <div style="text-align: left; line-height: 1.2;">
@@ -186,7 +204,7 @@ try:
             </div>
             """, unsafe_allow_html=True)
             
-        # c2: Sigma (스타일 통일)
+        # c2: Sigma
         with c2:
             st.markdown(f"""
             <div style="text-align: left; line-height: 1.2;">
@@ -196,7 +214,7 @@ try:
             </div>
             """, unsafe_allow_html=True)
 
-        # c3: RSI (스타일 통일)
+        # c3: RSI
         with c3:
             st.markdown(f"""
             <div style="text-align: left; line-height: 1.2;">
@@ -206,7 +224,7 @@ try:
             </div>
             """, unsafe_allow_html=True)
 
-        # c4: 거래량 (스타일 통일)
+        # c4: 거래량
         with c4:
             st.markdown(f"""
             <div style="text-align: left; line-height: 1.2;">
@@ -217,12 +235,12 @@ try:
             """, unsafe_allow_html=True)
 
        # ---------------------------------------------------------------------
-        # 2. 신호 로직 및 섹션 제목 (상세 수치 표시 기능 복구 완료)
+        # 2. 신호 로직 및 섹션 제목
         # ---------------------------------------------------------------------
         st.markdown("---")
         st.subheader("📢 오늘 매수 신호 분석 (Tier Status)")
         
-        # 변수 추출 (편의용)
+        # 변수 추출
         sig, sig60 = today['Sigma'], today['Sigma60']
         rsi, vol_r = today['RSI'], today['Vol_Ratio']
         pct_b, close = today['Pct_B'], today['Close']
@@ -257,7 +275,6 @@ try:
                 d_title = "💎 DIAMOND: OFF"
                 d_msg = "조건 미충족"
                 d_act = "-"
-                # [복구됨] 현재 상태 표시
                 d_note = f"현재 Sigma: {sig:.2f} (목표 -2.5)"
 
             st.markdown(f"""
@@ -293,7 +310,6 @@ try:
                 g_title = "🥇 GOLD: OFF"
                 g_msg = "조건 미충족"
                 g_act = "-"
-                # [복구됨] 현재 상태 표시
                 g_note = f"현재 Sigma: {sig:.2f} (목표 -2.0)"
 
             st.markdown(f"""
@@ -325,7 +341,6 @@ try:
                 s_title = "🥈 SILVER: OFF"
                 s_msg = "조건 미충족"
                 s_act = "-"
-                # [복구됨] 현재 상태 표시
                 s_note = f"RSI: {rsi:.1f} / %B: {pct_b:.2f}"
 
             st.markdown(f"""
@@ -342,8 +357,9 @@ try:
             st.success(f"⚡ **Blitz 신호 발생!** (RSI2 < 5 & 상승장) → 단타 진입 추천 (${cash_blitz:,.0f} 사용 가능)")
 
         st.info("💡 팁: 과거 성과와 15일 수익률 분석을 보려면 사이드바 메뉴에서 **'📊 백테스트 상세 분석'**을 선택하세요.")
-# ---------------------------------------------------------------------
-        # 3. 청산 가이드 (누락된 부분 복구)
+
+        # ---------------------------------------------------------------------
+        # 3. 청산 가이드
         # ---------------------------------------------------------------------
         st.markdown("---")
         st.subheader("🛡️ 청산 가이드 (Manual)")
@@ -365,17 +381,15 @@ try:
             - 🛑 **손절:** 진입가 -15% (${current_price*0.85:.2f})
             """)
 
-        # (선택) 거래량 설명 캡션
         st.caption("※ 거래량 강도: 당일 거래량 / 20일 평균. 1.5배 이상이면 '투매'로 간주하여 신뢰도 상승.")
 
     # =========================================================================
-    # [PAGE 2] 백테스트 상세 분석 (승률 & 색상 적용)
+    # [PAGE 2] 백테스트 상세 분석
     # =========================================================================
     elif menu == "📊 백테스트 상세 분석":
         st.title("📊 과거 신호 수익률 정밀 검증")
         st.markdown(f"최근 {check_years}년 데이터 기준 시뮬레이션입니다.")
         
-        # --- 전체 시뮬레이션 데이터 생성 로직 (동일) ---
         cond_dia = (df['Sigma'] <= -2.5) & (df['RSI'] < 30) & (df['Vol_Ratio'] >= 1.5)
         cond_gold_std = (df['Sigma'] <= -2.0) & (df['RSI'] < 30) & (df['Vol_Ratio'] >= 1.5)
         cond_gold_dual = (df['Sigma'] <= -1.8) & (df['Sigma60'] <= -2.0)
@@ -392,14 +406,12 @@ try:
             date_str = df.index[i].strftime('%Y-%m-%d')
             price_buy = df['Close'].iloc[i]
             
-            # 등급 판별
             if cond_dia.iloc[i]: tier = "💎 다이아"
             elif cond_gold.iloc[i]: tier = "🥇 골드"
             elif cond_silver.iloc[i]: tier = "🥈 실버"
             elif cond_blitz.iloc[i]: tier = "⚡ 블리츠"
             else: tier = "기타"
 
-            # 수익률 계산 (기존과 동일)
             ret_5d = np.nan
             ret_15d = np.nan
             price_5d = np.nan
@@ -418,29 +430,23 @@ try:
                 "등급": tier,
                 "매수가": price_buy,
                 "5일후_주가": price_5d,
-                "수익률(5일)": ret_5d,  # 숫자형 유지 (스타일링 위해)
+                "수익률(5일)": ret_5d,
                 "15일후_주가": price_15d,
-                "수익률(15일)": ret_15d # 숫자형 유지
+                "수익률(15일)": ret_15d
             })
 
         if history:
             df_hist = pd.DataFrame(history)
             df_hist = df_hist.sort_values("날짜", ascending=False)
 
-            # -----------------------------------------------------------------
-            # 1. 승률(Win Rate) 통계 계산 및 표시 (신규 추가)
-            # -----------------------------------------------------------------
             st.subheader("📈 전체 신호 승률 분석")
             
-            # NaN 제외하고 계산
             valid_5d = df_hist.dropna(subset=['수익률(5일)'])
             valid_15d = df_hist.dropna(subset=['수익률(15일)'])
             
-            # 승리 횟수 (수익률 > 0)
             win_5d = (valid_5d['수익률(5일)'] > 0).sum()
             win_15d = (valid_15d['수익률(15일)'] > 0).sum()
             
-            # 승률 계산
             rate_5d = (win_5d / len(valid_5d) * 100) if len(valid_5d) > 0 else 0
             rate_15d = (win_15d / len(valid_15d) * 100) if len(valid_15d) > 0 else 0
             
@@ -451,36 +457,27 @@ try:
             
             st.markdown("---")
 
-            # -----------------------------------------------------------------
-            # 2. 상세 표 출력 (색상 스타일링 적용)
-            # -----------------------------------------------------------------
             st.subheader("📋 신호 발생 이력 요약")
             
-            # 화면 표시용 컬럼만 선택
             df_display = df_hist[['날짜', '등급', '매수가', '수익률(5일)', '수익률(15일)']].copy()
             
-            # 색상 함수 정의 (빨강/파랑)
             def color_returns(val):
                 if pd.isna(val): return ""
-                color = '#ff4b4b' if val > 0 else '#4b88ff' # 빨강 / 파랑
+                color = '#ff4b4b' if val > 0 else '#4b88ff'
                 return f'color: {color}; font-weight: bold;'
 
-            # Pandas Styler 적용
             st.dataframe(
                 df_display.style
                 .format({
                     "매수가": "${:.2f}",
                     "수익률(5일)": "{:+.2f}%",
                     "수익률(15일)": "{:+.2f}%"
-                }, na_rep="-") # NaN은 '-'로 표시
-                .map(color_returns, subset=['수익률(5일)', '수익률(15일)']), # 색상 적용
+                }, na_rep="-")
+                .map(color_returns, subset=['수익률(5일)', '수익률(15일)']),
                 use_container_width=True,
                 hide_index=True
             )
             
-            # -----------------------------------------------------------------
-            # 3. 엑셀 다운로드
-            # -----------------------------------------------------------------
             st.markdown("---")
             st.subheader("📥 전체 데이터 다운로드")
             st.write("상세 분석을 위해 전체 데이터를 엑셀(CSV)로 받으세요.")
