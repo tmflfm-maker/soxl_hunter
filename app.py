@@ -570,7 +570,7 @@ try:
                         <div style="
                             text-align: center; 
                             line-height: 1.4; /* 줄 간격: 숫자가 작으면 좁아짐 */
-                            margin-top: -2px;">
+                            margin-bottom,: 2px;">
                             <span style="color: gray; font-size: 0.9em;">Buy:</span> <strong>{row['date']}</strong><br>
                             <span style="color: gray; font-size: 0.9em;">Sell:</span> <strong>{row['sell_date']}</strong><br>
                             <span style="font-size: 0.85em; color: #555; background-color: #f0f2f6; padding: 2px 6px; border-radius: 4px;">{period_text}</span>
@@ -734,6 +734,7 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
+
 
 
 
