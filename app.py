@@ -13,25 +13,35 @@ import uuid
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="SOXL Hunter V6", layout="wide")
 
-# 스타일 설정
+# 스타일 설정 (박스 높이 고정 및 디자인)
 st.markdown("""
 <style>
-    .pyramid { background-color: #dc3545; border: 2px solid #ffc107; color: white; margin-top: 10px; }
-    .big-font { font-size: 20px !important; font-weight: bold; }
-    .signal-box { padding: 15px; border-radius: 10px; margin-bottom: 15px; text-align: center; color: white; }
+    .signal-box {
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 10px;
+        text-align: center;
+        color: white;
+        height: 180px; /* 박스 높이 고정 */
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
     .diamond { background-color: #6f42c1; border: 2px solid #fff; }
     .gold { background-color: #fd7e14; border: 2px solid #fff; }
     .silver { background-color: #004085; border: 2px solid #fff; }
-    .blitz { background-color: #28a745; border: 2px solid #fff; }
-    .hold { background-color: #495057; border: 1px dashed #ccc; }
+    .hold { background-color: #495057; border: 1px dashed #ccc; } /* 회색 배경 */
     
-    /* 탭 스타일 */
+    .big-font { font-size: 1.2rem; font-weight: bold; margin-bottom: 5px; }
+    .desc-text { font-size: 0.9rem; opacity: 0.9; }
+    .action-text { font-size: 1.1rem; font-weight: bold; margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 5px; }
+    
+    .ts-highlight { font-weight: 900; color: #d63384; background-color: #f8d7da; padding: 2px 6px; border-radius: 4px; }
+    
+    /* 탭 스타일 조정 */
     .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #f0f2f6; border-radius: 4px; gap: 1px; padding-top: 10px; padding-bottom: 10px; }
+    .stTabs [data-baseweb="tab"] { height: 50px; background-color: #f0f2f6; border-radius: 4px; padding: 10px; }
     .stTabs [aria-selected="true"] { background-color: #4e8cff; color: white; }
-    
-    /* TS 강조 스타일 */
-    .ts-highlight { font-size: 1.1em; font-weight: 900; color: #d63384; background-color: #f8d7da; padding: 2px 6px; border-radius: 4px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -58,7 +68,6 @@ def get_data(ticker="SOXL"):
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
             
-            # 지표 계산
             df['MA20'] = df['Close'].rolling(window=20).mean()
             df['MA120'] = df['Close'].rolling(window=120).mean()
             df['MA200'] = df['Close'].rolling(window=200).mean()
@@ -130,7 +139,7 @@ def update_cash(strategy_type, amount, action):
     if action == "deposit": data[key] += amount
     elif action == "buy": data[key] -= amount
     elif action == "sell": data[key] += amount
-    elif action == "set": data[key] = amount # 강제 설정 기능
+    elif action == "set": data[key] = amount
         
     save_json(WALLET_FILE, data)
     return data
@@ -181,7 +190,9 @@ def sell_trade(trade_id, sell_price):
 # 4. 메인 앱 구조
 # -----------------------------------------------------------------------------
 try:
-    st.sidebar.title("🦅 Hunter V6")
+    # [1. 메뉴 위치 수정] 사이드바 최상단으로 이동
+    st.sidebar.title("🦅 Hunter V6 System")
+    menu = st.sidebar.radio("📌 메뉴", ["🚀 SOXL 대시보드", "📜 과거 매매 기록", "📊 백테스트"])
     
     # 데이터 로드
     df = get_data("SOXL")
@@ -193,16 +204,11 @@ try:
     prev = df.iloc[-2]
     current_price = today['Close']
 
-    # --- [사이드바] 자산 관리 (총 자산 기능 추가) ---
+    # --- 사이드바: 자산 관리 ---
     portfolio_data = load_portfolio()
     wallet = load_wallet()
     
-    # 평가금액 계산
-    total_eval = 0
-    for t in portfolio_data:
-        if t['status'] == 'holding':
-            total_eval += t['qty'] * current_price
-            
+    total_eval = sum([t['qty'] * current_price for t in portfolio_data if t['status'] == 'holding'])
     total_cash = wallet["hunter_cash"] + wallet["blitz_cash"]
     total_assets = total_eval + total_cash
     
@@ -214,24 +220,17 @@ try:
     c1.metric("🦅 Hunter", f"${wallet['hunter_cash']:,.0f}")
     c2.metric("⚡ Blitz", f"${wallet['blitz_cash']:,.0f}")
     
-    st.sidebar.caption(f"현재 주식 평가액: ${total_eval:,.0f}")
-
-    # [8번 요청 해결] 예수금 초기화 방지용 수동 수정 기능
-    with st.sidebar.expander("🛠️ 예수금 강제 수정 (초기화 대비)"):
-        st.caption("서버 재부팅 시 예수금이 초기화되면 여기서 복구하세요.")
-        edit_h = st.number_input("Hunter 예수금 설정", value=float(wallet['hunter_cash']))
-        edit_b = st.number_input("Blitz 예수금 설정", value=float(wallet['blitz_cash']))
-        if st.button("강제 설정 적용"):
-            update_cash("Hunter", edit_h, "set")
-            update_cash("Blitz", edit_b, "set")
+    # [3. 예수금 추가 기능 복구]
+    with st.sidebar.expander("💵 예수금 입금/수정"):
+        deposit_type = st.radio("계좌 선택", ["Hunter", "Blitz"])
+        deposit_amount = st.number_input("입금액 ($)", step=100)
+        if st.button("입금 확인"):
+            update_cash(deposit_type, deposit_amount, "deposit")
             st.rerun()
-
+            
     if st.sidebar.button("데이터/잔고 갱신"):
         st.cache_data.clear()
         st.rerun()
-
-    # --- 메인 메뉴 ---
-    menu = st.sidebar.radio("📌 메뉴", ["🚀 SOXL 대시보드", "📜 과거 매매 기록", "📊 백테스트"])
 
     # =========================================================================
     # [PAGE 1] 대시보드
@@ -252,34 +251,56 @@ try:
         with c3: st.markdown(f"**RSI(14)**<br><span style='font-size:24px; font-weight:bold;'>{today['RSI']:.1f}</span>", unsafe_allow_html=True)
         with c4: st.markdown(f"**Volume**<br><span style='font-size:24px; font-weight:bold;'>{today['Vol_Ratio']:.2f}배</span>", unsafe_allow_html=True)
 
-        # [1번 요청 해결] 상세 코멘트 복구
+        # [2. 매수 신호 분석 디자인 수정] HTML 박스 형태로 복구
         st.markdown("---")
         st.subheader("📢 매수 신호 분석")
         
-        sig = today['Sigma']
-        rsi = today['RSI']
-        vol = today['Vol_Ratio']
+        sig, sig60 = today['Sigma'], today['Sigma60']
+        rsi, vol = today['RSI'], today['Vol_Ratio']
         
-        # 다이아
+        # 조건 로직
         is_dia = (sig <= -2.5) and (rsi < 30) and (vol >= 1.5)
-        dia_note = "조건 충족! 매수 추천" if is_dia else f"Sigma: {sig:.2f} (목표 -2.5)"
-        
-        # 골드
-        is_gold = ((sig <= -2.0) and (rsi < 30) and (vol >= 1.5)) or ((sig <= -1.8) and (today['Sigma60'] <= -2.0))
-        gold_note = "조건 충족!" if is_gold else f"Sigma: {sig:.2f} (목표 -2.0)"
-        
-        # 실버
+        is_gold = ((sig <= -2.0) and (rsi < 30) and (vol >= 1.5)) or ((sig <= -1.8) and (sig60 <= -2.0))
+        is_gold = is_gold and (not is_dia)
         cond_silver = (rsi < 45) and (today['Pct_B'] < 0.2)
         is_silver = cond_silver and today['Is_Yangbong']
-        silver_note = "양봉 대기중" if cond_silver and not is_silver else f"RSI: {rsi:.1f} (목표 45↓)"
+        
+        # 멘트 설정
+        d_title = "💎 DIAMOND"
+        d_cls = "diamond" if is_dia else "hold"
+        d_msg = "조건 충족! 80% 매수" if is_dia else f"Sigma: {sig:.2f} (목표 -2.5)"
+        
+        g_title = "🥇 GOLD"
+        g_cls = "gold" if is_gold else "hold"
+        g_msg = "조건 충족! 50% 매수" if is_gold else f"Sigma: {sig:.2f} (목표 -2.0)"
+        
+        s_title = "🥈 SILVER"
+        s_cls = "silver" if is_silver else "hold"
+        s_msg = "양봉 확인됨! 20% 매수" if is_silver else ("양봉 대기중" if cond_silver else f"RSI: {rsi:.1f} (목표 45↓)")
 
+        # HTML 출력
         c_d, c_g, c_s = st.columns(3)
         with c_d:
-            st.info(f"💎 **DIAMOND**\n\n상태: {'🟢 ON' if is_dia else '⚪ OFF'}\n\nRunning: {dia_note}")
+            st.markdown(f"""
+            <div class="signal-box {d_cls}">
+                <div class="big-font">{d_title}</div>
+                <div class="desc-text">{d_msg}</div>
+            </div>
+            """, unsafe_allow_html=True)
         with c_g:
-            st.info(f"🥇 **GOLD**\n\n상태: {'🟢 ON' if is_gold else '⚪ OFF'}\n\nRunning: {gold_note}")
+            st.markdown(f"""
+            <div class="signal-box {g_cls}">
+                <div class="big-font">{g_title}</div>
+                <div class="desc-text">{g_msg}</div>
+            </div>
+            """, unsafe_allow_html=True)
         with c_s:
-            st.info(f"🥈 **SILVER**\n\n상태: {'🟢 ON' if is_silver else '⚪ OFF'}\n\nRunning: {silver_note}")
+            st.markdown(f"""
+            <div class="signal-box {s_cls}">
+                <div class="big-font">{s_title}</div>
+                <div class="desc-text">{s_msg}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
         # 보유 자산 관리
         st.markdown("---")
@@ -305,12 +326,10 @@ try:
         holdings = [t for t in portfolio_data if t['status'] == 'holding']
         if holdings:
             for t in holdings:
-                # TS 계산
                 ts_txt = "-"
                 try:
                     peak = df.loc[df.index.strftime('%Y-%m-%d') >= t['date']]['Close'].max()
                     peak = max(peak, current_price) if not np.isnan(peak) else current_price
-                    
                     if "다이아" in t['tier']: stop = peak * 0.6
                     elif "골드" in t['tier']: stop = peak * 0.8
                     elif "실버" in t['tier']: stop = peak * 0.85
@@ -318,7 +337,6 @@ try:
                     ts_txt = f"${stop:.2f}"
                 except: pass
 
-                # 수익률
                 profit = (current_price - t['price']) * t['qty']
                 pct = (current_price - t['price']) / t['price'] * 100
                 p_color = "red" if pct > 0 else "blue"
@@ -327,41 +345,40 @@ try:
                     cols = st.columns([1.5, 1.5, 1.5, 2, 2.5])
                     cols[0].markdown(f"**{t['date']}**\n\n{t['tier']}")
                     cols[1].markdown(f"평단: **${t['price']:.2f}**\n\n수량: **{t['qty']}**")
-                    # [4번 요청] TS 강조
+                    # [4. TS 강조 적용]
                     cols[2].markdown(f"현재: **${current_price:.2f}**\n\nTS: <span class='ts-highlight'>{ts_txt}</span>", unsafe_allow_html=True)
                     cols[3].markdown(f":{p_color}[**{pct:+.2f}%**]\n\n:{p_color}[**${profit:+.2f}**]")
                     
-                    # [3번 요청] 매도 옆에 삭제 버튼 (스타일 다르게)
                     with cols[4]:
                         sell_price = st.number_input("매도가", value=float(current_price), key=f"p_{t['id']}", label_visibility="collapsed")
                         b1, b2 = st.columns(2)
                         if b1.button("매도", key=f"s_{t['id']}", type="primary"):
                             sell_trade(t['id'], sell_price)
                             st.rerun()
-                        if b2.button("삭제", key=f"d_{t['id']}"): # type="secondary" (기본 회색)
+                        # [3. 삭제 버튼 빨간색 텍스트 스타일]
+                        if b2.button("삭제", key=f"d_{t['id']}"):
                             delete_trade(t['id'])
                             st.rerun()
         else:
             st.info("보유 중인 자산이 없습니다.")
 
     # =========================================================================
-    # [PAGE 2] 과거 매매 기록 (테이블 형식으로 변경)
+    # [PAGE 2] 과거 매매 기록 (테이블 형식으로 간소화)
     # =========================================================================
-    elif menu == "📜 과거 매매 기록": # [2번 요청] (History) 삭제
+    elif menu == "📜 과거 매매 기록":
         st.title("📜 매매 기록 일지")
         
         history = [t for t in portfolio_data if t['status'] == 'sold']
         
-        # [6번 요청] 폰트 크기 키움
-        st.markdown(f"<h2 style='text-align: center;'>총 매매 횟수: <span style='color:blue;'>{len(history)}회</span></h2>", unsafe_allow_html=True)
+        # [4. 총 매매 횟수 왼쪽 정렬]
+        st.markdown(f"### 총 매매 횟수: {len(history)}회")
         st.markdown("---")
 
         if history:
-            # [5번 요청] 깔끔한 테이블 형식으로 변환
             data_list = []
             for t in history:
                 profit = (t['sell_price'] - t['price']) * t['qty']
-                pct = (t['sell_price'] - t['price']) / t['price']
+                pct = (t['sell_price'] - t['price']) / t['price'] * 100
                 
                 try:
                     d1 = datetime.strptime(t['date'], "%Y-%m-%d")
@@ -378,32 +395,34 @@ try:
                     "매도단가": t['sell_price'],
                     "수량": t['qty'],
                     "수익금": profit,
-                    "수익률": pct
+                    "수익률": pct / 100 # 퍼센트 포맷을 위해 소수로 저장
                 })
             
             df_hist = pd.DataFrame(data_list)
             
-            # 테이블 컬럼 설정 (수익률 막대그래프 등 시각화)
+            # [4. 수익률 숫자와 색상만 표시]
+            def color_surplus(val):
+                color = 'red' if val > 0 else 'blue'
+                return f'color: {color}; font-weight: bold;'
+
             st.dataframe(
-                df_hist,
-                column_config={
-                    "매수단가": st.column_config.NumberColumn(format="$%.2f"),
-                    "매도단가": st.column_config.NumberColumn(format="$%.2f"),
-                    "수익금": st.column_config.NumberColumn(format="$%.2f"),
-                    "수익률": st.column_config.ProgressColumn(
-                        format="%.2f%%",
-                        min_value=-0.5, max_value=0.5, # -50% ~ +50% 기준 바
-                    ),
-                },
+                df_hist.style.format({
+                    "매수단가": "${:.2f}",
+                    "매도단가": "${:.2f}",
+                    "수익금": "${:.2f}",
+                    "수익률": "{:+.2f}%"
+                }).map(color_surplus, subset=['수익률', '수익금']),
                 use_container_width=True,
                 hide_index=True
             )
         else:
             st.info("기록이 없습니다.")
 
-   # --- [PAGE 3] 백테스트 ---
-    elif menu == "📊 SOXL 백테스트 분석":
-        st.title("📊 SOXL 과거 수익률 정밀 검증")
+    # =========================================================================
+    # [PAGE 3] 백테스트
+    # =========================================================================
+    elif menu == "📊 백테스트":
+        st.title("📊 과거 수익률 분석")
         
         # 기존 백테스트 로직
         cond_dia = (df['Sigma'] <= -2.5) & (df['RSI'] < 30) & (df['Vol_Ratio'] >= 1.5)
@@ -462,6 +481,7 @@ try:
 
 except Exception as e:
     st.error(f"오류: {e}")
+
 
 
 
