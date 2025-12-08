@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import os
 import time
@@ -28,6 +28,10 @@ st.markdown("""
     .stTabs [data-baseweb="tab-list"] { gap: 10px; }
     .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #f0f2f6; border-radius: 4px; gap: 1px; padding-top: 10px; padding-bottom: 10px; }
     .stTabs [aria-selected="true"] { background-color: #4e8cff; color: white; }
+    
+    /* 매도 섹션 스타일 */
+    .sell-section { background-color: rgba(255, 75, 75, 0.1); padding: 10px; border-radius: 5px; border: 1px solid rgba(255, 75, 75, 0.3); }
+    .ts-price { font-weight: bold; color: #ff4b4b; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -123,7 +127,11 @@ def load_wallet():
 
 def update_cash(strategy_type, amount, action):
     data = load_wallet()
-    key = "hunter_cash" if strategy_type == "Hunter" else "blitz_cash"
+    # 전략 타입 매핑
+    if strategy_type == "Blitz" or strategy_type == "블리츠":
+        key = "blitz_cash"
+    else:
+        key = "hunter_cash"
     
     if action == "deposit":
         data[key] += amount
@@ -135,7 +143,6 @@ def update_cash(strategy_type, amount, action):
     save_json(WALLET_FILE, data)
     return data
 
-# 포트폴리오 로드/저장
 def load_portfolio():
     return load_json(PORTFOLIO_FILE, [])
 
@@ -147,7 +154,9 @@ def add_trade(date, tier, price, qty):
         "tier": tier,
         "price": float(price),
         "qty": int(qty),
-        "status": "holding"
+        "status": "holding",
+        "sell_price": 0.0,
+        "sell_date": ""
     }
     data.append(new_trade)
     save_json(PORTFOLIO_FILE, data)
@@ -157,13 +166,30 @@ def delete_trade(trade_id):
     data = [t for t in data if t["id"] != trade_id]
     save_json(PORTFOLIO_FILE, data)
 
-def toggle_status(trade_id):
+# [수정됨] 매도 처리 함수 (입력받은 매도 단가 사용)
+def sell_trade(trade_id, sell_price):
     data = load_portfolio()
+    sold_info = None
+    
     for t in data:
-        if t["id"] == trade_id:
-            t["status"] = "sold" if t["status"] == "holding" else "holding"
+        if t["id"] == trade_id and t["status"] == "holding":
+            t["status"] = "sold"
+            t["sell_price"] = float(sell_price) # 입력받은 가격 저장
+            t["sell_date"] = datetime.now().strftime("%Y-%m-%d")
+            
+            sold_info = t
             break
-    save_json(PORTFOLIO_FILE, data)
+            
+    if sold_info:
+        total_sell_amt = sold_info["sell_price"] * sold_info["qty"]
+        tier_name = sold_info["tier"]
+        wallet_type = "Blitz" if "블리츠" in tier_name else "Hunter"
+        
+        update_cash(wallet_type, total_sell_amt, "sell")
+        save_json(PORTFOLIO_FILE, data)
+        return True, total_sell_amt, wallet_type
+        
+    return False, 0, ""
 
 # -----------------------------------------------------------------------------
 # 4. 메인 앱 구조
@@ -335,13 +361,13 @@ try:
         st.caption("※ 거래량 강도: 당일 거래량 / 20일 평균. 1.5배 이상이면 '투매'로 간주하여 신뢰도 상승.")
 
         # =====================================================================
-        # [NEW] 4. 현재 보유 자산 (My Portfolio)
+        # 4. 현재 보유 자산 및 매매 기록 (My Portfolio)
         # =====================================================================
         st.markdown("---")
-        st.subheader("💼 현재 보유 자산 (My Portfolio)")
+        st.subheader("💼 포트폴리오 관리 (My Portfolio)")
 
-        # 4-1. 입력 폼 (Expander로 깔끔하게)
-        with st.expander("➕ 매매 기록 입력 (Trade Log)", expanded=False):
+        # 4-1. 입력 폼
+        with st.expander("➕ 매매 기록 수기 입력 (Trade Log)", expanded=False):
             c_in1, c_in2, c_in3, c_in4, c_in5 = st.columns(5)
             with c_in1:
                 input_date = st.date_input("매수 날짜", datetime.now())
@@ -355,12 +381,10 @@ try:
                 st.write("") 
                 st.write("") 
                 
-                # [수정된 부분] 버튼 클릭 시 예수금 연동 로직
                 if st.button("기록 저장"):
                     if input_price > 0 and input_qty > 0:
                         total_cost = input_price * input_qty
                         
-                        # 등급에 따라 차감할 지갑 결정
                         if "블리츠" in input_tier:
                             stype = "Blitz"
                             wallet_key = "blitz_cash"
@@ -368,15 +392,10 @@ try:
                             stype = "Hunter"
                             wallet_key = "hunter_cash"
                         
-                        # 잔고 확인
                         current_wallet = load_wallet()
                         if current_wallet[wallet_key] >= total_cost:
-                            # 1. 예수금 차감 (buy 액션)
                             update_cash(stype, total_cost, "buy")
-                            
-                            # 2. 포트폴리오 추가
                             add_trade(input_date, input_tier, input_price, input_qty)
-                            
                             st.success(f"매수 완료! {stype} 예수금에서 ${total_cost:,.2f} 차감되었습니다.")
                             time.sleep(1)
                             st.rerun()
@@ -385,33 +404,87 @@ try:
                     else:
                         st.error("가격과 수량을 확인하세요.")
 
-        # 4-2. 보유 자산 테이블 표시
+        # 4-2. 포트폴리오 데이터 처리
         portfolio_data = load_portfolio()
         
-        if portfolio_data:
-            pf_df = pd.DataFrame(portfolio_data)
-            
-            # 현재가 적용 및 수익률 계산
-            pf_df['current_price'] = current_price
-            pf_df['profit_pct'] = ((pf_df['current_price'] - pf_df['price']) / pf_df['price']) * 100
-            pf_df['profit_val'] = (pf_df['current_price'] - pf_df['price']) * pf_df['qty']
-            
-            # 날짜순 정렬
-            pf_df = pf_df.sort_values("date", ascending=False)
-            
-            st.markdown(f"#### 💰 총 보유 평가액: :blue[${(pf_df[pf_df['status']=='holding']['current_price'] * pf_df[pf_df['status']=='holding']['qty']).sum():,.2f}]")
+        holdings = [t for t in portfolio_data if t['status'] == 'holding']
+        history = [t for t in portfolio_data if t['status'] == 'sold']
 
-            # 테이블 출력
-            for index, row in pf_df.iterrows():
+        # ---------------------------------------------------------------------
+        # [섹션 1] 현재 보유 자산 (Holding)
+        # ---------------------------------------------------------------------
+        st.markdown(f"#### 🔥 현재 보유 자산 ({len(holdings)}건)")
+        
+        if holdings:
+            df_hold = pd.DataFrame(holdings)
+            df_hold['current_price'] = current_price
+            df_hold['profit_pct'] = ((df_hold['current_price'] - df_hold['price']) / df_hold['price']) * 100
+            df_hold['profit_val'] = (df_hold['current_price'] - df_hold['price']) * df_hold['qty']
+            df_hold = df_hold.sort_values("date", ascending=False)
+            
+            total_val = (df_hold['current_price'] * df_hold['qty']).sum()
+            total_profit = df_hold['profit_val'].sum()
+            total_profit_color = "red" if total_profit > 0 else "blue"
+            
+            st.markdown(f"**총 평가액:** :blue[${total_val:,.2f}] / **총 수익금:** :{total_profit_color}[${total_profit:,.2f}]")
+
+            for index, row in df_hold.iterrows():
                 pct = row['profit_pct']
                 color = "red" if pct > 0 else "blue"
                 sign = "+" if pct > 0 else ""
                 
-                with st.container():
-                    bg_color = "rgba(40, 167, 69, 0.1)" if row['status'] == 'holding' else "rgba(108, 117, 125, 0.1)"
-                    status_icon = "🟢 보유중" if row['status'] == 'holding' else "⚫ 매도됨"
+                # --- [핵심] 실시간 청산가(Trailing Stop) 계산 로직 ---
+                ts_note = ""
+                ts_price = 0.0
+                
+                try:
+                    buy_date_str = row['date']
+                    # 매수일 이후의 데이터 조회
+                    period_mask = df.index.strftime('%Y-%m-%d') >= buy_date_str
+                    period_df = df.loc[period_mask]
                     
-                    c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 2, 2, 2, 1])
+                    if not period_df.empty:
+                        # 매수일 이후 최고 종가 (Peak)
+                        peak_price = period_df['Close'].max()
+                        # 오늘 현재가가 더 높다면 Peak 갱신
+                        peak_price = max(peak_price, current_price)
+                    else:
+                        peak_price = current_price # 데이터 없으면 현재가
+                    
+                    # 티어별 로직 적용
+                    if "다이아" in row['tier']:
+                        # 5일 의무 보유 체크
+                        buy_dt = datetime.strptime(buy_date_str, "%Y-%m-%d")
+                        days_held = (datetime.now() - buy_dt).days
+                        if days_held < 5:
+                            ts_note = f"🔒 5일 의무보유 ({days_held}일차)"
+                        else:
+                            ts_price = peak_price * 0.60 # -40%
+                            ts_note = f"TS: ${ts_price:.2f} (고점대비 -40%)"
+                    
+                    elif "골드" in row['tier']:
+                        ts_price = peak_price * 0.80 # -20%
+                        ts_note = f"TS: ${ts_price:.2f} (고점대비 -20%)"
+                        
+                    elif "실버" in row['tier']:
+                        ts_price = peak_price * 0.85 # -15%
+                        ts_note = f"TS: ${ts_price:.2f} (고점대비 -15%)"
+                        
+                    elif "블리츠" in row['tier']:
+                        # 블리츠는 매수가 기준 손절 -15%
+                        ts_price = row['price'] * 0.85
+                        ts_note = f"Stop: ${ts_price:.2f} (매수가대비 -15%)"
+                    
+                    else:
+                        ts_note = "-"
+
+                except Exception as e:
+                    ts_note = "계산 불가"
+
+                # ----------------------------------------------------
+                
+                with st.container():
+                    c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1.5, 2.5, 3])
                     
                     with c1:
                         st.markdown(f"**{row['date']}**")
@@ -421,29 +494,76 @@ try:
                         st.caption(f"수량: {row['qty']}주")
                     with c3:
                         st.markdown(f"현재: **${current_price:.2f}**")
-                        if row['status'] == 'holding':
-                            st.markdown(f":{color}[**{sign}{pct:.2f}%**]")
-                        else:
-                            st.caption("-")
+                        st.caption(f"최고점: ${peak_price:.2f}" if 'peak_price' in locals() else "")
                     with c4:
-                        if row['status'] == 'holding':
-                            val = row['profit_val']
-                            st.markdown(f":{color}[**{sign}${val:.2f}**]")
-                        else:
-                            st.caption("청산 완료")
+                        st.markdown(f"수익률: :{color}[**{sign}{pct:.2f}%**]")
+                        st.markdown(f"수익금: :{color}[**{sign}${row['profit_val']:.2f}**]")
                     with c5:
-                        st.markdown(f"**{status_icon}**")
-                        if st.button("상태변경", key=f"toggle_{row['id']}"):
-                            toggle_status(row['id'])
-                            st.rerun()
-                    with c6:
-                        if st.button("🗑️", key=f"del_{row['id']}"):
-                            delete_trade(row['id'])
-                            st.rerun()
+                        # 매도 섹션 (입력창 + 버튼)
+                        with st.container():
+                            # 청산 가이드 표시
+                            if ts_note:
+                                st.markdown(f"<span class='ts-price'>⚠️ {ts_note}</span>", unsafe_allow_html=True)
+                            
+                            c_sell_in, c_sell_btn, c_del = st.columns([1.5, 1, 0.5])
+                            with c_sell_in:
+                                # 매도 단가 입력 (기본값: 현재가)
+                                manual_sell_price = st.number_input("매도단가", value=float(current_price), step=0.01, format="%.2f", label_visibility="collapsed", key=f"sell_input_{row['id']}")
+                            with c_sell_btn:
+                                if st.button("매도", key=f"sell_{row['id']}"):
+                                    success, amt, w_type = sell_trade(row['id'], manual_sell_price)
+                                    if success:
+                                        st.success(f"매도 완료! (+${amt:,.2f})")
+                                        time.sleep(1)
+                                        st.rerun()
+                            with c_del:
+                                if st.button("🗑️", key=f"del_{row['id']}"):
+                                    delete_trade(row['id'])
+                                    st.rerun()
                     st.markdown("---")
         else:
-            st.info("보유 중인 자산 기록이 없습니다. 위 '+' 버튼을 눌러 추가해주세요.")
+            st.info("현재 보유 중인 자산이 없습니다.")
 
+        # ---------------------------------------------------------------------
+        # [섹션 2] 과거 매매 기록 (History)
+        # ---------------------------------------------------------------------
+        st.markdown(f"#### 📜 과거 매매 기록 ({len(history)}건)")
+        
+        if history:
+            df_hist = pd.DataFrame(history)
+            df_hist['profit_pct'] = ((df_hist['sell_price'] - df_hist['price']) / df_hist['price']) * 100
+            df_hist['profit_val'] = (df_hist['sell_price'] - df_hist['price']) * df_hist['qty']
+            df_hist = df_hist.sort_values("sell_date", ascending=False)
+            
+            for index, row in df_hist.iterrows():
+                pct = row['profit_pct']
+                color = "red" if pct > 0 else "blue"
+                sign = "+" if pct > 0 else ""
+                
+                with st.container():
+                    st.markdown(f"""
+                    <div style="padding: 10px; background-color: rgba(108, 117, 125, 0.1); border-radius: 5px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong>{row['date']} 매수</strong> → <strong>{row['sell_date']} 매도</strong><br>
+                                <span style="font-size: 0.9em; color: gray;">{row['tier']} / {row['qty']}주</span>
+                            </div>
+                            <div style="text-align: right;">
+                                <span>매수: ${row['price']:.2f} → 매도: ${row['sell_price']:.2f}</span><br>
+                                <span style="color: {color}; font-weight: bold;">수익률: {sign}{pct:.2f}% (수익금: {sign}${row['profit_val']:.2f})</span>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    col_del_btn = st.columns([9, 1])
+                    with col_del_btn[1]:
+                         if st.button("🗑️", key=f"del_hist_{row['id']}"):
+                            delete_trade(row['id'])
+                            st.rerun()
+                    st.write("") 
+        else:
+            st.caption("아직 완료된 매매 기록이 없습니다.")
 
     # =========================================================================
     # [PAGE 2] 백테스트 상세 분석
