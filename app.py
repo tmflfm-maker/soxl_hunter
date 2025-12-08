@@ -568,7 +568,7 @@ try:
                     with c_date:
                          st.markdown(f"""
                         <div style="
-                            text-align: center; 
+                            text-align: top; 
                             line-height: 1.4;
                             margin-top: 1px;   /* [조절] 날짜 덩어리를 윗줄에서 5px 내림 */
                         ">
@@ -739,6 +739,7 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
+
 
 
 
