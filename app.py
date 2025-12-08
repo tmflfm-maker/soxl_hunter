@@ -505,7 +505,7 @@ try:
                             if ts_note:
                                 st.markdown(f"<span class='ts-price'>⚠️ {ts_note}</span>", unsafe_allow_html=True)
                             
-                            c_sell_in, c_sell_btn, c_del = st.columns([1.5, 1, 1])
+                            c_sell_in, c_sell_btn, c_del = st.columns([1.5, 1, 0.5])
                             with c_sell_in:
                                 # 매도 단가 입력 (기본값: 현재가)
                                 manual_sell_price = st.number_input("매도단가", value=float(current_price), step=0.01, format="%.2f", label_visibility="collapsed", key=f"sell_input_{row['id']}")
@@ -676,4 +676,5 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
+
 
