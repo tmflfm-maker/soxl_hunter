@@ -194,7 +194,7 @@ def sell_trade(trade_id, sell_price):
 # 4. 메인 앱 구조
 # -----------------------------------------------------------------------------
 try:
-    st.sidebar.title("🦅 Hunter V6 System")
+    st.sidebar.title("🦅 Soxl Hunter")
     menu = st.sidebar.radio("📌 메뉴", ["🚀 SOXL 대시보드", "📜 과거 매매 기록", "📊 백테스트"])
     
     # 데이터 로드
@@ -217,10 +217,10 @@ try:
     
     st.sidebar.markdown("---")
     st.sidebar.header("💰 내 자산 현황")
-    st.sidebar.metric("🏆 총 자산 (평가+예수)", f"${total_assets:,.0f}")
+    st.sidebar.metric("🏆 총 자산 (평가액 + 예수)", f"${total_assets:,.1f}")
     
-    st.sidebar.metric("🦅 Hunter 예수금", f"${wallet['hunter_cash']:,.0f}")
-    st.sidebar.metric("⚡ Blitz 예수금", f"${wallet['blitz_cash']:,.0f}")
+    st.sidebar.metric("🦅 Hunter 예수금", f"${wallet['hunter_cash']:,.1f}")
+    st.sidebar.metric("⚡ Blitz 예수금", f"${wallet['blitz_cash']:,.1f}")
     
     with st.sidebar.expander("💵 예수금 입금/수정"):
         deposit_type = st.radio("계좌 선택", ["Hunter", "Blitz"])
@@ -270,7 +270,7 @@ try:
         if is_dia: d_cls, d_msg, d_act, d_note = "diamond", "인생 역전 기회", "80% 매수", "5일 강제 보유"
         else: d_cls, d_msg, d_act, d_note = "hold", "조건 미충족", "-", f"Sigma: {sig:.2f} (목표 -2.5)"
 
-        if is_gold: g_cls, g_msg, g_act, g_note = "gold", "강력 과매도 구간", "50% 매수", "트렌드 추종"
+        if is_gold: g_cls, g_msg, g_act, g_note = "gold", "강력 과매도 구간", "50% 매수", "추세 추종"
         else: g_cls, g_msg, g_act, g_note = "hold", "조건 미충족", "-", f"Sigma: {sig:.2f} (목표 -2.0)"
 
         if is_silver: s_cls, s_msg, s_act, s_note = "silver", "눌림목 반등 확인", "20% 매수", "양봉 확인됨"
@@ -279,7 +279,7 @@ try:
         if is_blitz: b_cls, b_msg, b_act, b_note = "blitz", "초단기 급등 노리기", "Blitz 예수금 사용", "RSI(2) < 5 & 상승장"
         else: b_cls, b_msg, b_act, b_note = "hold", "조건 미충족", "-", f"RSI(2): {today['RSI2']:.1f} (목표 5↓)"
 
-        # [수정] 3단 배열 (다이아, 골드, 실버)
+        # 3단 배열 (다이아, 골드, 실버)
         c_d, c_g, c_s = st.columns(3)
         with c_d:
             st.markdown(f"""
@@ -366,9 +366,9 @@ try:
                 with st.container(border=True):
                     cols = st.columns([1.5, 1.5, 1.5, 2, 2.5])
                     cols[0].markdown(f"**{t['date']}**\n\n{t['tier']}")
-                    cols[1].markdown(f"평단: **${t['price']:.2f}**\n\n수량: **{t['qty']}**")
-                    cols[2].markdown(f"현재: **${current_price:.2f}**\n\nTS: <span class='ts-highlight'>{ts_txt}</span>", unsafe_allow_html=True)
-                    cols[3].markdown(f":{p_color}[**{pct:+.2f}%**]\n\n:{p_color}[**${profit:+.2f}**]")
+                    cols[1].markdown(f"매수 단가: **${t['price']:.2f}**\n\n수량: **{t['qty']}**")
+                    cols[2].markdown(f"현재가: **${current_price:.2f}**\n\nTS: <span class='ts-highlight'>{ts_txt}</span>", unsafe_allow_html=True)
+                    cols[3].markdown(f"수익률:{p_color}[**{pct:+.2f}%**]\n\n수익:{p_color}[**${profit:+.2f}**]")
                     
                     with cols[4]:
                         sell_price = st.number_input("매도가", value=float(current_price), key=f"p_{t['id']}", label_visibility="collapsed")
@@ -530,6 +530,7 @@ try:
 
 except Exception as e:
     st.error(f"오류: {e}")
+
 
 
 
