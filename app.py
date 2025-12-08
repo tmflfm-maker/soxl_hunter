@@ -383,19 +383,23 @@ try:
             st.info("보유 중인 자산이 없습니다.")
 
     # =========================================================================
-    # [PAGE 2] 과거 매매 기록 (개별 삭제 기능 추가 & ROI 계산 변경)
+    # [PAGE 2] 과거 매매 기록 (편집 가능 표 & 증권사형 수익률)
     # =========================================================================
     elif menu == "📜 과거 매매 기록":
-        st.title("📜 매매 기록 일지")
+        st.title("📜 매매 기록 일지 (Trade Log)")
         
+        # 전체 기록 로드
+        portfolio_data = load_portfolio()
+        # 매도된 기록만 가져오기
         history = [t for t in portfolio_data if t['status'] == 'sold']
         
-        # 기간 조회 필터
+        # 1. 기간 조회 필터
         period_option = st.radio("📅 조회 기간", ["전체", "1개월", "3개월", "6개월", "1년"], horizontal=True)
         
         filtered_history = []
         now = datetime.now()
         
+        # 기간 필터링 로직
         for t in history:
             try:
                 sell_dt = datetime.strptime(t['sell_date'], "%Y-%m-%d")
@@ -407,73 +411,97 @@ try:
             except:
                 if period_option == "전체": filtered_history.append(t)
 
+        # 2. 증권사 방식 수익률 계산 (기간내 총수익 / 기간내 총매수금액)
         if filtered_history:
-            total_profit = 0
+            period_total_profit = 0
+            period_total_buy_amt = 0 # 매수 원금 합계
+            
             for t in filtered_history:
                 buy_amt = t['price'] * t['qty']
                 sell_amt = t['sell_price'] * t['qty']
-                total_profit += (sell_amt - buy_amt)
+                
+                period_total_buy_amt += buy_amt
+                period_total_profit += (sell_amt - buy_amt)
             
-            # [수정] 수익률 = (기간 내 수익금 / 현재 총 자산) * 100
-            # total_assets 변수는 사이드바에서 이미 계산됨
-            total_roi = (total_profit / total_assets * 100) if total_assets > 0 else 0
+            # 수익률 계산 (매수 원금이 0이면 0%)
+            period_roi = (period_total_profit / period_total_buy_amt * 100) if period_total_buy_amt > 0 else 0
             
-            roi_color = "red" if total_roi >= 0 else "blue"
-            profit_color = "red" if total_profit >= 0 else "blue"
-            sign = "+" if total_profit >= 0 else ""
+            roi_color = "red" if period_roi >= 0 else "blue"
+            profit_color = "red" if period_total_profit >= 0 else "blue"
+            sign = "+" if period_total_profit >= 0 else ""
 
-            # 상단 통계
+            # 상단 통계 표시
             m1, m2, m3 = st.columns(3)
-            m1.markdown(f"<div style='text-align:left;'><h3>총 매매 횟수: {len(filtered_history)}회</h3></div>", unsafe_allow_html=True)
-            m2.markdown(f"<div style='text-align:center; font-size:0.9rem; color:gray;'>기간 수익금</div><div style='text-align:center; font-size:1.6rem; font-weight:bold; color:{profit_color};'>{sign}${total_profit:,.2f}</div>", unsafe_allow_html=True)
-            m3.markdown(f"<div style='text-align:center; font-size:0.9rem; color:gray;'>총자산 대비 수익률</div><div style='text-align:center; font-size:1.6rem; font-weight:bold; color:{roi_color};'>{sign}{total_roi:.2f}%</div>", unsafe_allow_html=True)
+            m1.markdown(f"<div style='text-align:left;'><h3>총 매매: {len(filtered_history)}건</h3></div>", unsafe_allow_html=True)
+            m2.markdown(f"<div style='text-align:center; font-size:0.9rem; color:gray;'>실현 수익금</div><div style='text-align:center; font-size:1.6rem; font-weight:bold; color:{profit_color};'>{sign}${period_total_profit:,.2f}</div>", unsafe_allow_html=True)
+            m3.markdown(f"<div style='text-align:center; font-size:0.9rem; color:gray;'>기간 수익률</div><div style='text-align:center; font-size:1.6rem; font-weight:bold; color:{roi_color};'>{sign}{period_roi:.2f}%</div>", unsafe_allow_html=True)
             st.markdown("---")
 
-            # [수정] 개별 항목 리스트 (삭제 버튼 추가를 위해 Dataframe 대신 Container 사용)
-            # 날짜 내림차순 정렬 (최신순)
-            filtered_history.sort(key=lambda x: x['sell_date'], reverse=True)
+            # 3. 편집 가능한 데이터프레임 생성
+            # 원본 데이터를 수정하기 쉽게 DataFrame으로 변환
+            df_hist = pd.DataFrame(filtered_history)
+            
+            # 표시할 컬럼 순서 및 이름 정리
+            # id는 숨기고, 나머지는 한글로 매핑하여 보여줌
+            # (profit 등 계산된 값은 수정해도 의미 없으므로 원본 데이터 위주로 구성)
+            edit_df = df_hist[['id', 'date', 'sell_date', 'tier', 'price', 'sell_price', 'qty']].copy()
+            edit_df['date'] = pd.to_datetime(edit_df['date']).dt.date
+            edit_df['sell_date'] = pd.to_datetime(edit_df['sell_date']).dt.date
+            
+            # 사용자에게 보여줄 컬럼명 설정
+            column_config = {
+                "id": None, # id는 숨김
+                "date": st.column_config.DateColumn("매수일"),
+                "sell_date": st.column_config.DateColumn("매도일"),
+                "tier": st.column_config.SelectboxColumn("등급", options=["💎 다이아", "🥇 골드", "🥈 실버", "⚡ 블리츠", "기타"]),
+                "price": st.column_config.NumberColumn("매수단가", format="$%.2f"),
+                "sell_price": st.column_config.NumberColumn("매도단가", format="$%.2f"),
+                "qty": st.column_config.NumberColumn("수량", step=1),
+            }
 
-            for t in filtered_history:
-                profit = (t['sell_price'] - t['price']) * t['qty']
-                pct = (t['sell_price'] - t['price']) / t['price'] * 100
-                p_color = "red" if pct >= 0 else "blue"
-                p_sign = "+" if pct >= 0 else ""
+            st.caption("💡 표의 내용을 더블 클릭하여 직접 수정하거나, 행을 선택해 삭제할 수 있습니다. 수정 후 반드시 아래 '저장' 버튼을 눌러주세요.")
+            
+            # [핵심] st.data_editor로 편집 기능 활성화
+            edited_data = st.data_editor(
+                edit_df,
+                column_config=column_config,
+                hide_index=True,
+                use_container_width=True,
+                num_rows="dynamic", # 행 추가/삭제 허용
+                key="history_editor"
+            )
+
+            # 4. 수정사항 저장 로직
+            if st.button("💾 수정사항 저장 (Save Changes)", type="primary"):
+                # 현재 로드된 전체 포트폴리오 가져오기
+                current_portfolio = load_portfolio()
                 
-                try:
-                    d1 = datetime.strptime(t['date'], "%Y-%m-%d")
-                    d2 = datetime.strptime(t['sell_date'], "%Y-%m-%d")
-                    days = (d2 - d1).days
-                    period_text = f"({days}일 보유)"
-                except: period_text = ""
+                # 'holding' 상태인 것들은 건드리지 않고 그대로 둠
+                holdings = [t for t in current_portfolio if t['status'] == 'holding']
+                
+                # 에디터에서 수정된 데이터들을 딕셔너리 리스트로 변환
+                updated_history = []
+                for index, row in edited_data.iterrows():
+                    item = {
+                        "id": row['id'], # ID 유지
+                        "date": row['date'].strftime("%Y-%m-%d"),
+                        "tier": row['tier'],
+                        "price": float(row['price']),
+                        "qty": int(row['qty']),
+                        "status": "sold", # 매매기록이므로 sold 고정
+                        "sell_price": float(row['sell_price']),
+                        "sell_date": row['sell_date'].strftime("%Y-%m-%d")
+                    }
+                    updated_history.append(item)
+                
+                # 기존 holdings + 수정된 history 합쳐서 저장
+                final_data = holdings + updated_history
+                save_json(PORTFOLIO_FILE, final_data)
+                
+                st.success("매매 기록이 성공적으로 수정되었습니다!")
+                time.sleep(1)
+                st.rerun()
 
-                with st.container(border=True):
-                    # 레이아웃: 정보(90%) + 삭제버튼(10%)
-                    c_info, c_del = st.columns([0.9, 0.1], vertical_alignment="center")
-                    
-                    with c_info:
-                        # 보기 좋게 3단 정보 배치
-                        cc1, cc2, cc3 = st.columns([1.5, 2, 1.5])
-                        
-                        # 1. 등급 및 날짜
-                        with cc1:
-                            st.markdown(f"**{t['tier']}**")
-                            st.caption(f"매수: {t['date']}\n\n매도: {t['sell_date']} {period_text}")
-                        
-                        # 2. 가격 및 수량
-                        with cc2:
-                            st.markdown(f"매수: ${t['price']:.2f} → 매도: **${t['sell_price']:.2f}**")
-                            st.caption(f"수량: {t['qty']}주")
-                            
-                        # 3. 수익
-                        with cc3:
-                            st.markdown(f":{p_color}[**{p_sign}{pct:.2f}%**]")
-                            st.markdown(f":{p_color}[**{p_sign}${profit:.2f}**]")
-
-                    # [수정] 개별 삭제 버튼 구현
-                    with c_del:
-                        if st.button("🗑️", key=f"del_history_{t['id']}"):
-                            delete_trade(t['id'])
-                            st.rerun()
         else:
             st.info("선택한 기간에 해당하는 매매 기록이 없습니다.")
 
@@ -539,6 +567,7 @@ try:
 
 except Exception as e:
     st.error(f"오류: {e}")
+
 
 
 
