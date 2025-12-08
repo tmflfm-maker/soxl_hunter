@@ -554,7 +554,7 @@ try:
                     c_tier, c_date, c_price, c_qty, c_profit, c_del = st.columns([1.2, 2.5, 1.8, 0.8, 2.2, 0.5], vertical_alignment="center")
                     
                     # [핵심 2] 모든 칸의 높이를 이 변수로 통일합니다. (필요하면 90px, 100px로 늘려보세요)
-                    ROW_HEIGHT = "85px"
+                    ROW_HEIGHT = "100px"
                     
                     # 1. 티어 (정중앙)
                     with c_tier:
@@ -719,6 +719,7 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
+
 
 
 
