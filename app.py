@@ -36,7 +36,7 @@ check_years = 3
 # -----------------------------------------------------------------------------
 # 2. 데이터 가져오기 및 처리 (연결 안정성 강화 버전)
 # -----------------------------------------------------------------------------
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300) # 5분마다 갱신
 def get_data():
     # 최대 5번 재시도하여 데이터 가져오기 성공률 높임
     for attempt in range(5):
@@ -498,7 +498,7 @@ try:
         else:
             st.info("현재 보유 중인 자산이 없습니다.")
 
-        # [섹션 2] 과거 매매 기록 (History) - 디자인 고도화 (CSS Grid)
+        # [섹션 2] 과거 매매 기록 (History) - 디자인 고도화 (CSS Grid & unsafe_allow_html=True 필수!)
         st.markdown(f"#### 📜 과거 매매 기록 ({len(history)}건)")
         
         if history:
@@ -521,13 +521,12 @@ try:
                     period_text = "(-)"
 
                 with st.container(border=True):
-                    # [핵심 변경] Streamlit으로 크게 2등분 (내용 9 : 버튼 1)
-                    # 내용 부분은 통짜 HTML(Grid)로 정렬하여 줄 틀어짐 방지
+                    # 전체 레이아웃을 [내용 92% : 버튼 8%]로 나눔
                     c_content, c_btn = st.columns([0.92, 0.08], vertical_alignment="center")
                     
                     with c_content:
-                        # [HTML/CSS Grid] 엑셀 표처럼 칸을 나누어 1px 오차 없이 정렬
-                        st.markdown(f"""
+                        # [중요] f-string 안에서 HTML을 작성할 때, indentation이 꼬이지 않게 주의
+                        html_content = f"""
                         <div style="
                             display: grid; 
                             grid-template-columns: 1.2fr 2.5fr 2.5fr 1fr 2fr; 
@@ -537,29 +536,27 @@ try:
                             <div style="text-align: center;">
                                 <span style="font-size: 1.6rem; font-weight: 900;">{row['tier']}</span>
                             </div>
-                            
                             <div style="text-align: center; line-height: 1.4; border-right: 1px solid #eee;">
                                 <div style="color: #666; font-size: 0.9rem;">Buy: <strong>{row['date']}</strong></div>
                                 <div style="color: #666; font-size: 0.9rem;">Sell: <strong>{row['sell_date']}</strong></div>
                                 <span style="font-size: 0.8rem; background-color: #f1f3f5; padding: 2px 6px; border-radius: 4px; color: #495057;">{period_text}</span>
                             </div>
-                            
                             <div style="text-align: right; line-height: 1.5; padding-right: 10px;">
                                 <div><span style="color: #888; font-size: 0.85rem;">매수단가:</span> <strong>${row['price']:.2f}</strong></div>
                                 <div><span style="color: #888; font-size: 0.85rem;">매도단가:</span> <strong>${row['sell_price']:.2f}</strong></div>
                             </div>
-
                             <div style="text-align: center; border-left: 1px solid #eee;">
                                 <span style="color: #888; font-size: 0.85rem;">수량</span><br>
                                 <span style="color: #333; font-weight: bold; font-size: 1.1rem;">{row['qty']}</span><span style="font-size: 0.8rem;">주</span>
                             </div>
-                            
                             <div style="text-align: right; color: {color};">
                                 <div style="font-size: 1.5rem; font-weight: 900;">{sign}{pct:.2f}%</div>
                                 <div style="font-size: 1.1rem; font-weight: bold; opacity: 0.9;">{sign}${row['profit_val']:.2f}</div>
                             </div>
                         </div>
-                        """, unsafe_allow_html=True)
+                        """
+                        # [핵심] unsafe_allow_html=True를 반드시 포함해야 렌더링됨
+                        st.markdown(html_content, unsafe_allow_html=True)
                     
                     with c_btn:
                         if st.button("🗑️", key=f"del_hist_{row['id']}"):
@@ -679,6 +676,7 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
+
 
 
 
