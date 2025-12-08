@@ -6,6 +6,7 @@ from datetime import datetime
 import json
 import os
 import time
+import uuid # 고유 ID 생성을 위해 추가
 
 # -----------------------------------------------------------------------------
 # 1. 페이지 설정 및 스타일
@@ -33,18 +34,16 @@ st.markdown("""
 check_years = 3
 
 # -----------------------------------------------------------------------------
-# 2. 데이터 가져오기 및 처리 (강화된 버전)
+# 2. 데이터 가져오기 및 처리
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def get_data():
-    # [수정됨] 데이터를 최대 3번까지 재시도하며 가져옵니다.
     for attempt in range(3):
         try:
             df = yf.download("SOXL", period=f"{check_years}y", interval="1d", progress=False)
             
-            # 데이터가 비어있으면 건너뛰고 재시도
             if df.empty or len(df) < 20:
-                time.sleep(1) # 1초 대기 후 재시도
+                time.sleep(1)
                 continue
 
             if isinstance(df.columns, pd.MultiIndex):
@@ -90,33 +89,37 @@ def get_data():
             df['Vol_Ratio'] = df['Volume'] / df['VolMA20']
             df['Is_Yangbong'] = df['Close'] > df['Open']
             
-            # 성공하면 데이터 반환
             return df
             
         except Exception:
-            time.sleep(1) # 에러 발생 시 1초 대기 후 재시도
+            time.sleep(1)
             continue
 
-    # 3번 다 실패하면 None 반환
     return None
 
 # -----------------------------------------------------------------------------
-# 3. 지갑 관리 시스템
+# 3. 지갑 및 포트폴리오 관리 시스템
 # -----------------------------------------------------------------------------
 WALLET_FILE = "my_wallet.json"
+PORTFOLIO_FILE = "my_portfolio.json"
 
-def load_wallet():
-    if not os.path.exists(WALLET_FILE):
-        default_data = {"hunter_cash": 700.0, "blitz_cash": 300.0}
-        with open(WALLET_FILE, "w") as f:
+def load_json(file_path, default_data):
+    if not os.path.exists(file_path):
+        with open(file_path, "w") as f:
             json.dump(default_data, f)
         return default_data
-    with open(WALLET_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(file_path, "r") as f:
+            return json.load(f)
+    except:
+        return default_data
 
-def save_wallet(data):
-    with open(WALLET_FILE, "w") as f:
+def save_json(file_path, data):
+    with open(file_path, "w") as f:
         json.dump(data, f)
+
+def load_wallet():
+    return load_json(WALLET_FILE, {"hunter_cash": 700.0, "blitz_cash": 300.0})
 
 def update_cash(strategy_type, amount, action):
     data = load_wallet()
@@ -127,16 +130,46 @@ def update_cash(strategy_type, amount, action):
         data[key] -= amount
     elif action == "sell":
         data[key] += amount
-    save_wallet(data)
+    save_json(WALLET_FILE, data)
     return data
 
+# 포트폴리오 로드/저장
+def load_portfolio():
+    # trade_id, date, tier, price, qty, status ('holding', 'sold')
+    return load_json(PORTFOLIO_FILE, [])
+
+def add_trade(date, tier, price, qty):
+    data = load_portfolio()
+    new_trade = {
+        "id": str(uuid.uuid4()), # 고유 ID
+        "date": date.strftime("%Y-%m-%d"),
+        "tier": tier,
+        "price": float(price),
+        "qty": int(qty),
+        "status": "holding" # 기본값 보유중
+    }
+    data.append(new_trade)
+    save_json(PORTFOLIO_FILE, data)
+
+def delete_trade(trade_id):
+    data = load_portfolio()
+    data = [t for t in data if t["id"] != trade_id]
+    save_json(PORTFOLIO_FILE, data)
+
+def toggle_status(trade_id):
+    data = load_portfolio()
+    for t in data:
+        if t["id"] == trade_id:
+            t["status"] = "sold" if t["status"] == "holding" else "holding"
+            break
+    save_json(PORTFOLIO_FILE, data)
+
 # -----------------------------------------------------------------------------
-# 4. 메인 앱 구조 (사이드바 메뉴 적용)
+# 4. 메인 앱 구조
 # -----------------------------------------------------------------------------
 try:
     df = get_data()
 
-    # [수정된 부분] 데이터 안전장치
     if df is None or len(df) < 2:
         st.error("📉 야후 파이낸스 연결이 원활하지 않습니다. (3회 재시도 실패). 잠시 후 왼쪽 사이드바의 '데이터/잔고 갱신' 버튼을 눌러주세요.")
         st.stop()
@@ -147,8 +180,6 @@ try:
 
     # --- [사이드바] 네비게이션 및 자산 관리 ---
     st.sidebar.title("🦅 SOXL Hunter V6")
-    
-    # [메뉴 선택 기능]
     menu = st.sidebar.radio("📌 메뉴 선택", ["🚀 대시보드 (Signal)", "📊 백테스트 상세 분석"])
     
     st.sidebar.markdown("---")
@@ -170,8 +201,8 @@ try:
         st.cache_data.clear()
         st.rerun()
 
-     # =========================================================================
-    # [PAGE 1] 대시보드 (오늘의 신호)
+    # =========================================================================
+    # [PAGE 1] 대시보드 (Signal)
     # =========================================================================
     if menu == "🚀 대시보드 (Signal)":
         st.title("🦅 오늘의 매수 신호 (Dashboard)")
@@ -182,10 +213,10 @@ try:
         change_pct = (change_val / prev['Close']) * 100
         
         if change_pct >= 0:
-            color_css = "color: #ff4b4b;" # 빨강
+            color_css = "color: #ff4b4b;"
             sign = "+"
         else:
-            color_css = "color: #4b88ff;" # 파랑
+            color_css = "color: #4b88ff;"
             sign = ""
         
         candle_text = "🔴 양봉" if today['Close'] >= today['Open'] else "🔵 음봉"
@@ -193,7 +224,6 @@ try:
 
         c1, c2, c3, c4 = st.columns(4)
         
-       # c1: 현재가
         with c1:
             st.markdown(f"""
             <div style="text-align: left; line-height: 1.2;">
@@ -203,8 +233,6 @@ try:
                 <span style="font-size: 15px; font-weight: bold; {color_css}">{sign}{change_pct:.2f}%</span>
             </div>
             """, unsafe_allow_html=True)
-            
-        # c2: Sigma
         with c2:
             st.markdown(f"""
             <div style="text-align: left; line-height: 1.2;">
@@ -213,8 +241,6 @@ try:
                 <span style="font-size: 14px; color: gray;">표준편차 등락</span>
             </div>
             """, unsafe_allow_html=True)
-
-        # c3: RSI
         with c3:
             st.markdown(f"""
             <div style="text-align: left; line-height: 1.2;">
@@ -223,8 +249,6 @@ try:
                 <span style="font-size: 14px; color: gray;">상대강도지수</span>
             </div>
             """, unsafe_allow_html=True)
-
-        # c4: 거래량
         with c4:
             st.markdown(f"""
             <div style="text-align: left; line-height: 1.2;">
@@ -234,154 +258,176 @@ try:
             </div>
             """, unsafe_allow_html=True)
 
-       # ---------------------------------------------------------------------
-        # 2. 신호 로직 및 섹션 제목
-        # ---------------------------------------------------------------------
+        # 2. 신호 로직
         st.markdown("---")
         st.subheader("📢 오늘 매수 신호 분석 (Tier Status)")
         
-        # 변수 추출
         sig, sig60 = today['Sigma'], today['Sigma60']
         rsi, vol_r = today['RSI'], today['Vol_Ratio']
         pct_b, close = today['Pct_B'], today['Close']
         ma120, ma200 = today['MA120'], today['MA200']
         is_yang = today['Is_Yangbong']
 
-        # 조건 정의
         is_dia = (sig <= -2.5) and (rsi < 30) and (vol_r >= 1.5)
-        
         is_gold_std = (sig <= -2.0) and (rsi < 30) and (vol_r >= 1.5)
         is_gold_dual = (sig <= -1.8) and (sig60 <= -2.0)
         is_gold = (is_gold_std or is_gold_dual) and (not is_dia)
-        
         cond_silver_base = (rsi < 45) and (pct_b < 0.2) and (close > ma120) and (not is_dia) and (not is_gold)
         is_silver = cond_silver_base and is_yang
-        
         is_blitz = (today['RSI2'] < 5) and (close > ma200)
 
-        # UI 출력 (3단 컬럼)
         col_d, col_g, col_s = st.columns(3)
 
-        # --- 1. Diamond Block ---
         with col_d:
             if is_dia:
-                d_cls = "diamond"
-                d_title = "💎 DIAMOND: ON"
-                d_msg = "인생 역전 기회 (Sniper)"
+                d_cls, d_title, d_msg = "diamond", "💎 DIAMOND: ON", "인생 역전 기회 (Sniper)"
                 d_act = f"메인 80% 매수<br>(${cash_hunter*0.8:,.0f})"
                 d_note = "5일 강제 보유 필수"
             else:
-                d_cls = "hold"
-                d_title = "💎 DIAMOND: OFF"
-                d_msg = "조건 미충족"
+                d_cls, d_title, d_msg = "hold", "💎 DIAMOND: OFF", "조건 미충족"
                 d_act = "-"
                 d_note = f"현재 Sigma: {sig:.2f} (목표 -2.5)"
 
-            st.markdown(f"""
-            <div class="signal-box {d_cls}">
-                <div class="big-font">{d_title}</div>
-                <p>{d_msg}</p>
-                <hr style="margin: 10px 0; border-color: rgba(255,255,255,0.3);">
-                <strong>{d_act}</strong><br>
-                <span style="font-size: 0.8em; opacity: 0.8;">{d_note}</span>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # 불타기 로직
+            st.markdown(f"""<div class="signal-box {d_cls}"><div class="big-font">{d_title}</div><p>{d_msg}</p><hr style="margin: 10px 0; border-color: rgba(255,255,255,0.3);"><strong>{d_act}</strong><br><span style="font-size: 0.8em; opacity: 0.8;">{d_note}</span></div>""", unsafe_allow_html=True)
             if cond_silver_base and is_yang:
-                 st.markdown("""
-                 <div class="signal-box pyramid">
-                    <strong>🔥 불타기 찬스</strong><br>
-                    <span style="font-size:0.8em">다이아 보유중이면 추가매수</span>
-                 </div>
-                 """, unsafe_allow_html=True)
+                 st.markdown("""<div class="signal-box pyramid"><strong>🔥 불타기 찬스</strong><br><span style="font-size:0.8em">다이아 보유중이면 추가매수</span></div>""", unsafe_allow_html=True)
 
-        # --- 2. Gold Block ---
         with col_g:
             if is_gold:
-                g_cls = "gold"
-                g_title = "🥇 GOLD: ON"
-                g_msg = "강력 과매도 (Trend)"
+                g_cls, g_title, g_msg = "gold", "🥇 GOLD: ON", "강력 과매도 (Trend)"
                 g_act = f"메인 50% 매수<br>(${cash_hunter*0.5:,.0f})"
-                if is_gold_std: g_note = "정석 조건 만족"
-                else: g_note = f"Dual Sigma 발동 (S60:{sig60:.2f})"
+                g_note = "정석 조건 만족" if is_gold_std else f"Dual Sigma 발동 (S60:{sig60:.2f})"
             else:
-                g_cls = "hold"
-                g_title = "🥇 GOLD: OFF"
-                g_msg = "조건 미충족"
+                g_cls, g_title, g_msg = "hold", "🥇 GOLD: OFF", "조건 미충족"
                 g_act = "-"
                 g_note = f"현재 Sigma: {sig:.2f} (목표 -2.0)"
+            st.markdown(f"""<div class="signal-box {g_cls}"><div class="big-font">{g_title}</div><p>{g_msg}</p><hr style="margin: 10px 0; border-color: rgba(255,255,255,0.3);"><strong>{g_act}</strong><br><span style="font-size: 0.8em; opacity: 0.8;">{g_note}</span></div>""", unsafe_allow_html=True)
 
-            st.markdown(f"""
-            <div class="signal-box {g_cls}">
-                <div class="big-font">{g_title}</div>
-                <p>{g_msg}</p>
-                <hr style="margin: 10px 0; border-color: rgba(255,255,255,0.3);">
-                <strong>{g_act}</strong><br>
-                <span style="font-size: 0.8em; opacity: 0.8;">{g_note}</span>
-            </div>
-            """, unsafe_allow_html=True)
-
-        # --- 3. Silver Block ---
         with col_s:
             if is_silver:
-                s_cls = "silver"
-                s_title = "🥈 SILVER: ON"
-                s_msg = "상승장 눌림목 (Scavenger)"
+                s_cls, s_title, s_msg = "silver", "🥈 SILVER: ON", "상승장 눌림목 (Scavenger)"
                 s_act = f"메인 20% 매수<br>(${cash_hunter*0.2:,.0f})"
                 s_note = "양봉 확인됨. 진입 가능."
             elif cond_silver_base and not is_yang:
-                s_cls = "hold"
-                s_title = "🥈 SILVER: WAIT"
-                s_msg = "자리는 좋으나 '음봉'임"
+                s_cls, s_title, s_msg = "hold", "🥈 SILVER: WAIT", "자리는 좋으나 '음봉'임"
                 s_act = "매수 금지 (대기)"
                 s_note = "내일 양봉 뜨면 진입하세요."
             else:
-                s_cls = "hold"
-                s_title = "🥈 SILVER: OFF"
-                s_msg = "조건 미충족"
+                s_cls, s_title, s_msg = "hold", "🥈 SILVER: OFF", "조건 미충족"
                 s_act = "-"
                 s_note = f"RSI: {rsi:.1f} / %B: {pct_b:.2f}"
-
-            st.markdown(f"""
-            <div class="signal-box {s_cls}">
-                <div class="big-font">{s_title}</div>
-                <p>{s_msg}</p>
-                <hr style="margin: 10px 0; border-color: rgba(255,255,255,0.3);">
-                <strong>{s_act}</strong><br>
-                <span style="font-size: 0.8em; opacity: 0.8;">{s_note}</span>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f"""<div class="signal-box {s_cls}"><div class="big-font">{s_title}</div><p>{s_msg}</p><hr style="margin: 10px 0; border-color: rgba(255,255,255,0.3);"><strong>{s_act}</strong><br><span style="font-size: 0.8em; opacity: 0.8;">{s_note}</span></div>""", unsafe_allow_html=True)
         
         if is_blitz:
             st.success(f"⚡ **Blitz 신호 발생!** (RSI2 < 5 & 상승장) → 단타 진입 추천 (${cash_blitz:,.0f} 사용 가능)")
 
         st.info("💡 팁: 과거 성과와 15일 수익률 분석을 보려면 사이드바 메뉴에서 **'📊 백테스트 상세 분석'**을 선택하세요.")
 
-        # ---------------------------------------------------------------------
         # 3. 청산 가이드
-        # ---------------------------------------------------------------------
         st.markdown("---")
         st.subheader("🛡️ 청산 가이드 (Manual)")
-        
         c_sell_1, c_sell_2 = st.columns(2)
-        
         with c_sell_1:
-            st.info("""
-            **🦅 [Hunter 전략 매도]**
-            - 💎 **다이아:** 5일간 절대 매도 금지 → 이후 고점 대비 -40% 트레일링 스탑
-            - 🥇 **골드:** 고점 대비 -20% 트레일링 스탑
-            - 🥈 **실버:** 고점 대비 -15% 트레일링 스탑
-            """)
-            
+            st.info("""**🦅 [Hunter 전략 매도]**\n- 💎 **다이아:** 5일간 절대 매도 금지 → 이후 고점 대비 -40% TS\n- 🥇 **골드:** 고점 대비 -20% TS\n- 🥈 **실버:** 고점 대비 -15% TS""")
         with c_sell_2:
-            st.success(f"""
-            **⚡ [Blitz 전략 매도]**
-            - 🎯 **익절:** 진입가 +10% (${current_price*1.1:.2f})
-            - 🛑 **손절:** 진입가 -15% (${current_price*0.85:.2f})
-            """)
-
+            st.success(f"""**⚡ [Blitz 전략 매도]**\n- 🎯 **익절:** 진입가 +10% (${current_price*1.1:.2f})\n- 🛑 **손절:** 진입가 -15% (${current_price*0.85:.2f})""")
         st.caption("※ 거래량 강도: 당일 거래량 / 20일 평균. 1.5배 이상이면 '투매'로 간주하여 신뢰도 상승.")
+
+        # =====================================================================
+        # [NEW] 4. 현재 보유 자산 (My Portfolio) - 요청하신 기능 추가
+        # =====================================================================
+        st.markdown("---")
+        st.subheader("💼 현재 보유 자산 (My Portfolio)")
+
+        # 4-1. 입력 폼 (Expander로 깔끔하게)
+        with st.expander("➕ 매매 기록 수기 입력 (Trade Log)", expanded=False):
+            c_in1, c_in2, c_in3, c_in4, c_in5 = st.columns(5)
+            with c_in1:
+                input_date = st.date_input("매수 날짜", datetime.now())
+            with c_in2:
+                input_tier = st.selectbox("진입 등급 (Tier)", ["💎 다이아", "🥇 골드", "🥈 실버", "⚡ 블리츠", "기타"])
+            with c_in3:
+                input_price = st.number_input("매수 단가 ($)", min_value=0.0, step=0.01, format="%.2f")
+            with c_in4:
+                input_qty = st.number_input("매수 수량 (주)", min_value=1, step=1)
+            with c_in5:
+                st.write("") # 간격 맞추기용
+                st.write("") 
+                if st.button("기록 저장"):
+                    if input_price > 0 and input_qty > 0:
+                        add_trade(input_date, input_tier, input_price, input_qty)
+                        st.success("저장 완료!")
+                        st.rerun()
+                    else:
+                        st.error("가격과 수량을 확인하세요.")
+
+        # 4-2. 보유 자산 테이블 표시
+        portfolio_data = load_portfolio()
+        
+        if portfolio_data:
+            # 데이터프레임 변환 및 계산
+            pf_df = pd.DataFrame(portfolio_data)
+            
+            # 현재가 적용 및 수익률 계산
+            # current_price는 위에서 구한 실시간 가격 사용
+            pf_df['current_price'] = current_price
+            pf_df['profit_pct'] = ((pf_df['current_price'] - pf_df['price']) / pf_df['price']) * 100
+            pf_df['profit_val'] = (pf_df['current_price'] - pf_df['price']) * pf_df['qty']
+            
+            # 테이블용 데이터 가공
+            # 날짜순 정렬
+            pf_df = pf_df.sort_values("date", ascending=False)
+            
+            # 화면 표시용
+            st.markdown(f"#### 💰 총 보유 평가액: :blue[${(pf_df[pf_df['status']=='holding']['current_price'] * pf_df[pf_df['status']=='holding']['qty']).sum():,.2f}]")
+
+            # 각 행을 반복하며 커스텀 표시 (수정/삭제 버튼 때문)
+            for index, row in pf_df.iterrows():
+                # 색상 결정
+                pct = row['profit_pct']
+                color = "red" if pct > 0 else "blue"
+                sign = "+" if pct > 0 else ""
+                
+                # 카드 형태로 표시
+                with st.container():
+                    # 상태에 따른 스타일
+                    bg_color = "rgba(40, 167, 69, 0.1)" if row['status'] == 'holding' else "rgba(108, 117, 125, 0.1)"
+                    status_icon = "🟢 보유중" if row['status'] == 'holding' else "⚫ 매도됨"
+                    
+                    c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 2, 2, 2, 1])
+                    
+                    with c1:
+                        st.markdown(f"**{row['date']}**")
+                        st.caption(f"{row['tier']}")
+                    with c2:
+                        st.markdown(f"평단: **${row['price']:.2f}**")
+                        st.caption(f"수량: {row['qty']}주")
+                    with c3:
+                        st.markdown(f"현재: **${current_price:.2f}**")
+                        # 보유 중일 때만 수익률 색상 표시
+                        if row['status'] == 'holding':
+                            st.markdown(f":{color}[**{sign}{pct:.2f}%**]")
+                        else:
+                            st.caption("-")
+                    with c4:
+                        if row['status'] == 'holding':
+                            val = row['profit_val']
+                            st.markdown(f":{color}[**{sign}${val:.2f}**]")
+                        else:
+                            st.caption("청산 완료")
+                    with c5:
+                        st.markdown(f"**{status_icon}**")
+                        if st.button("상태변경", key=f"toggle_{row['id']}"):
+                            toggle_status(row['id'])
+                            st.rerun()
+                    with c6:
+                        if st.button("🗑️", key=f"del_{row['id']}"):
+                            delete_trade(row['id'])
+                            st.rerun()
+                    st.markdown("---")
+        else:
+            st.info("보유 중인 자산 기록이 없습니다. 위 '+' 버튼을 눌러 추가해주세요.")
+
 
     # =========================================================================
     # [PAGE 2] 백테스트 상세 분석
