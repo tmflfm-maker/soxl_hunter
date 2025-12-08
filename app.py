@@ -524,47 +524,73 @@ try:
         else:
             st.info("현재 보유 중인 자산이 없습니다.")
 
-        # ---------------------------------------------------------------------
-        # [섹션 2] 과거 매매 기록 (History)
+       # ---------------------------------------------------------------------
+        # [섹션 2] 과거 매매 기록 (History) - 디자인 개선됨
         # ---------------------------------------------------------------------
         st.markdown(f"#### 📜 과거 매매 기록 ({len(history)}건)")
         
         if history:
             df_hist = pd.DataFrame(history)
+            # 매도 당시 가격 기준 수익률 계산
             df_hist['profit_pct'] = ((df_hist['sell_price'] - df_hist['price']) / df_hist['price']) * 100
             df_hist['profit_val'] = (df_hist['sell_price'] - df_hist['price']) * df_hist['qty']
             df_hist = df_hist.sort_values("sell_date", ascending=False)
             
             for index, row in df_hist.iterrows():
                 pct = row['profit_pct']
-                color = "red" if pct > 0 else "blue"
+                color = "#ff4b4b" if pct > 0 else "#4b88ff" # 빨강 / 파랑
                 sign = "+" if pct > 0 else ""
                 
-                with st.container():
-                    st.markdown(f"""
-                    <div style="padding: 10px; background-color: rgba(108, 117, 125, 0.1); border-radius: 5px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <strong>{row['date']} 매수</strong> → <strong>{row['sell_date']} 매도</strong><br>
-                                <span style="font-size: 0.9em; color: gray;">{row['tier']} / {row['qty']}주</span>
-                            </div>
-                            <div style="text-align: right;">
-                                <span>매수: ${row['price']:.2f} → 매도: ${row['sell_price']:.2f}</span><br>
-                                <span style="color: {color}; font-weight: bold;">수익률: {sign}{pct:.2f}% (수익금: {sign}${row['profit_val']:.2f})</span>
-                            </div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                # [디자인 변경] 박스(Container) 안에 모든 요소 배치
+                with st.container(border=True):
+                    # 컬럼 비율 조절: 티어(1.2) / 날짜(2.5) / 가격(2.0) / 수익(2.0) / 삭제버튼(0.5)
+                    c_tier, c_date, c_price, c_profit, c_del = st.columns([1.2, 2.5, 2.0, 2.0, 0.5])
                     
-                    col_del_btn = st.columns([9, 1])
-                    with col_del_btn[1]:
-                         if st.button("🗑️", key=f"del_hist_{row['id']}"):
+                    # 1. 티어 (가장 왼쪽, 크게)
+                    with c_tier:
+                        st.markdown(f"""
+                        <div style="display: flex; align-items: center; height: 100%;">
+                            <span style="font-size: 1.4rem; font-weight: 900;">{row['tier']}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    # 2. 날짜 (바로 오른쪽, 폰트 키움)
+                    with c_date:
+                         st.markdown(f"""
+                        <div style="font-size: 1.05rem; line-height: 1.4;">
+                            <span style="color: gray;">Buy:</span> <strong>{row['date']}</strong><br>
+                            <span style="color: gray;">Sell:</span> <strong>{row['sell_date']}</strong>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # 3. 매수/매도 단가 및 수량 (가운데 정렬)
+                    with c_price:
+                        st.markdown(f"""
+                        <div style="text-align: center; font-size: 1rem;">
+                            <div>매수: ${row['price']:.2f}</div>
+                            <div>매도: <strong>${row['sell_price']:.2f}</strong></div>
+                            <div style="font-size: 0.85em; color: gray; margin-top: 2px;">({row['qty']}주)</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # 4. 수익률 (오른쪽 강조)
+                    with c_profit:
+                        st.markdown(f"""
+                        <div style="text-align: right; color: {color};">
+                            <div style="font-size: 1.4rem; font-weight: bold;">{sign}{pct:.2f}%</div>
+                            <div style="font-weight: bold; font-size: 1rem;">{sign}${row['profit_val']:.2f}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    # 5. 삭제 버튼 (가장 오른쪽)
+                    with c_del:
+                        # 세로 중앙 정렬을 위한 여백
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.button("🗑️", key=f"del_hist_{row['id']}"):
                             delete_trade(row['id'])
                             st.rerun()
-                    st.write("") 
         else:
             st.caption("아직 완료된 매매 기록이 없습니다.")
-
     # =========================================================================
     # [PAGE 2] 백테스트 상세 분석
     # =========================================================================
@@ -676,5 +702,6 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
+
 
 
