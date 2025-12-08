@@ -525,7 +525,7 @@ try:
             st.info("현재 보유 중인 자산이 없습니다.")
 
       # ---------------------------------------------------------------------
-        # [섹션 2] 과거 매매 기록 (History) - 자동 중앙 정렬 버전 (Clean)
+        # [섹션 2] 과거 매매 기록 (History) - 박스 높이 고정 & Flexbox 정렬 (Final)
         # ---------------------------------------------------------------------
         st.markdown(f"#### 📜 과거 매매 기록 ({len(history)}건)")
         
@@ -549,56 +549,59 @@ try:
                     period_text = "(-)"
 
                 with st.container(border=True):
-                    # [핵심] vertical_alignment="center" -> 모든 요소를 수직 중앙에 배치합니다.
-                    # 이제 픽셀 계산할 필요 없이 알아서 가운데 줄을 맞춥니다.
+                    # [핵심] vertical_alignment="center"를 유지하되, 
+                    # 아래 HTML에서 height를 강제로 늘려서 공간을 확보합니다.
                     c_tier, c_date, c_price, c_qty, c_profit, c_del = st.columns([1.2, 2.5, 1.8, 0.8, 2.2, 0.5], vertical_alignment="center")
                     
-                    # 1. 티어
+                    # 공통 높이 설정 (이 숫자를 늘리면 박스가 더 커집니다)
+                    BOX_HEIGHT = "80px"
+                    
+                    # 1. 티어 (정중앙)
                     with c_tier:
                         st.markdown(f"""
-                        <div style="text-align: center; font-size: 1.5rem; font-weight: 900;">
-                            {row['tier']}
+                        <div style="height: {BOX_HEIGHT}; display: flex; align-items: center; justify-content: center;">
+                            <span style="font-size: 1.5rem; font-weight: 900;">{row['tier']}</span>
                         </div>
                         """, unsafe_allow_html=True)
                         
-                    # 2. 날짜
+                    # 2. 날짜 (정중앙 + 세로나열)
                     with c_date:
                          st.markdown(f"""
-                        <div style="text-align: center; line-height: 1.4;">
-                            <span style="color: gray; font-size: 0.9em;">Buy:</span> <strong>{row['date']}</strong><br>
-                            <span style="color: gray; font-size: 0.9em;">Sell:</span> <strong>{row['sell_date']}</strong><br>
-                            <span style="font-size: 0.8em; color: #555; background-color: #f0f2f6; padding: 2px 6px; border-radius: 4px;">{period_text}</span>
+                        <div style="height: {BOX_HEIGHT}; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.4;">
+                            <div><span style="color: gray; font-size: 0.9em;">Buy:</span> <strong>{row['date']}</strong></div>
+                            <div><span style="color: gray; font-size: 0.9em;">Sell:</span> <strong>{row['sell_date']}</strong></div>
+                            <div style="margin-top: 4px;"><span style="font-size: 0.85em; color: #555; background-color: #f0f2f6; padding: 2px 6px; border-radius: 4px;">{period_text}</span></div>
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # 3. 매수/매도 단가
+                    # 3. 매수/매도 단가 (우측 중앙)
                     with c_price:
                         st.markdown(f"""
-                        <div style="text-align: right; line-height: 1.5; padding-right: 10px;"> 
-                            <span style="color: gray; font-size: 0.9em;">매수:</span> <strong>${row['price']:.2f}</strong><br>
-                            <span style="color: gray; font-size: 0.9em;">매도:</span> <strong>${row['sell_price']:.2f}</strong>
+                        <div style="height: {BOX_HEIGHT}; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; line-height: 1.5; padding-right: 10px;">
+                            <div><span style="color: gray; font-size: 0.9em;">매수:</span> <strong>${row['price']:.2f}</strong></div>
+                            <div><span style="color: gray; font-size: 0.9em;">매도:</span> <strong>${row['sell_price']:.2f}</strong></div>
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # 4. 수량
+                    # 4. 수량 (정중앙)
                     with c_qty:
                         st.markdown(f"""
-                        <div style="text-align: center;">
-                            <span style="color: gray; font-size: 0.9em;">수량</span><br>
-                            <span style="font-size: 1.1rem; font-weight: bold;">{row['qty']}</span>
+                        <div style="height: {BOX_HEIGHT}; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                            <span style="color: gray; font-size: 0.9em;">수량</span>
+                            <span style="font-size: 1.1rem; font-weight: bold;">{row['qty']}<span style="font-size: 0.8rem;">주</span></span>
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # 5. 수익률 & 수익금
+                    # 5. 수익률 & 수익금 (우측 중앙)
                     with c_profit:
                         st.markdown(f"""
-                        <div style="text-align: right; color: {color}; line-height: 1.2;">
-                            <div style="font-size: 1.4rem; font-weight: 900;">{sign}{pct:.2f}%</div>
+                        <div style="height: {BOX_HEIGHT}; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; color: {color}; line-height: 1.2;">
+                            <div style="font-size: 1.5rem; font-weight: 900;">{sign}{pct:.2f}%</div>
                             <div style="font-size: 1.0rem; font-weight: bold; opacity: 0.9;">{sign}${row['profit_val']:.2f}</div>
                         </div>
                         """, unsafe_allow_html=True)
                         
-                    # 6. 삭제 버튼 (자동 중앙 정렬됨)
+                    # 6. 삭제 버튼 (자동 중앙)
                     with c_del:
                         if st.button("🗑️", key=f"del_hist_{row['id']}"):
                             delete_trade(row['id'])
@@ -716,6 +719,7 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
+
 
 
 
