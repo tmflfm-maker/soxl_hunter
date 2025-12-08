@@ -525,13 +525,12 @@ try:
             st.info("현재 보유 중인 자산이 없습니다.")
 
       # ---------------------------------------------------------------------
-        # [섹션 2] 과거 매매 기록 (History) - 높이 고정 & 강제 중앙 정렬 (Flexbox)
+        # [섹션 2] 과거 매매 기록 (History) - 높이 고정 및 완벽 중앙 정렬 (Final Fix)
         # ---------------------------------------------------------------------
         st.markdown(f"#### 📜 과거 매매 기록 ({len(history)}건)")
         
         if history:
             df_hist = pd.DataFrame(history)
-            # 매도 당시 가격 기준 수익률 계산
             df_hist['profit_pct'] = ((df_hist['sell_price'] - df_hist['price']) / df_hist['price']) * 100
             df_hist['profit_val'] = (df_hist['sell_price'] - df_hist['price']) * df_hist['qty']
             df_hist = df_hist.sort_values("sell_date", ascending=False)
@@ -550,11 +549,13 @@ try:
                     period_text = "(-)"
 
                 with st.container(border=True):
-                    # [핵심 1] vertical_alignment="center" : 스트림릿 차원에서의 중앙 정렬
-                    c_tier, c_date, c_price, c_qty, c_profit, c_del = st.columns([1.2, 2.5, 1.8, 0.8, 2.2, 0.5], vertical_alignment="center")
+                    # [핵심 1] vertical_alignment="center": Streamlit에게 "기둥들을 가운데 정렬해"라고 명령
+                    # 비율 조정: 티어 | 날짜 | 가격 | 수량 | 수익 | 삭제
+                    c_tier, c_date, c_price, c_qty, c_profit, c_del = st.columns([1.2, 2.5, 2.2, 1.0, 2.2, 0.6], vertical_alignment="center")
                     
-                    # [핵심 2] 모든 칸의 높이를 이 변수로 통일합니다. (필요하면 90px, 100px로 늘려보세요)
-                    ROW_HEIGHT = "100px"
+                    # [핵심 2] 모든 텍스트 칸의 높이를 이 변수로 '강제 통일'합니다.
+                    # 이 숫자를 늘리면(예: 90px) 박스가 더 위아래로 넓어집니다.
+                    ROW_HEIGHT = "70px"
                     
                     # 1. 티어 (정중앙)
                     with c_tier:
@@ -564,45 +565,47 @@ try:
                         </div>
                         """, unsafe_allow_html=True)
                         
-                    # 2. 날짜 (세로 방향 중앙 정렬)
+                    # 2. 날짜 (세로 중앙 + 가로 중앙)
                     with c_date:
                          st.markdown(f"""
-                        <div style="height: {ROW_HEIGHT}; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.4;">
-                            <div><span style="color: gray; font-size: 0.9em;">Buy:</span> <strong>{row['date']}</strong></div>
-                            <div><span style="color: gray; font-size: 0.9em;">Sell:</span> <strong>{row['sell_date']}</strong></div>
-                            <div style="margin-top: 4px;"><span style="font-size: 0.85em; color: #555; background-color: #f0f2f6; padding: 2px 6px; border-radius: 4px;">{period_text}</span></div>
+                        <div style="height: {ROW_HEIGHT}; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.3;">
+                            <div><span style="color: gray; font-size: 0.85em;">Buy:</span> <strong>{row['date']}</strong></div>
+                            <div><span style="color: gray; font-size: 0.85em;">Sell:</span> <strong>{row['sell_date']}</strong></div>
+                            <div style="margin-top: 3px;"><span style="font-size: 0.8em; color: #555; background-color: #f0f2f6; padding: 2px 6px; border-radius: 4px;">{period_text}</span></div>
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # 3. 매수/매도 단가 (우측 중앙 정렬)
+                    # 3. 매수/매도 단가 (세로 중앙 + 가로 오른쪽)
                     with c_price:
                         st.markdown(f"""
-                        <div style="height: {ROW_HEIGHT}; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; line-height: 1.5; padding-right: 10px;">
-                            <div><span style="color: gray; font-size: 0.9em;">매수:</span> <strong>${row['price']:.2f}</strong></div>
-                            <div><span style="color: gray; font-size: 0.9em;">매도:</span> <strong>${row['sell_price']:.2f}</strong></div>
+                        <div style="height: {ROW_HEIGHT}; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; line-height: 1.4; padding-right: 5px;">
+                            <div><span style="color: gray; font-size: 0.85em;">매수:</span> <strong>${row['price']:.2f}</strong></div>
+                            <div><span style="color: gray; font-size: 0.85em;">매도:</span> <strong>${row['sell_price']:.2f}</strong></div>
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # 4. 수량 (정중앙)
+                    # 4. 수량 (세로 중앙 + 가로 중앙)
                     with c_qty:
                         st.markdown(f"""
                         <div style="height: {ROW_HEIGHT}; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                            <span style="color: gray; font-size: 0.9em;">수량</span>
-                            <span style="font-size: 1.1rem; font-weight: bold;">{row['qty']}<span style="font-size: 0.8rem;">주</span></span>
+                            <span style="color: gray; font-size: 0.85em;">수량</span>
+                            <span style="font-size: 1.1rem; font-weight: bold;">{row['qty']}<span style="font-size: 0.8rem; font-weight: normal;">주</span></span>
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # 5. 수익률 (우측 중앙)
+                    # 5. 수익률 (세로 중앙 + 가로 오른쪽)
                     with c_profit:
                         st.markdown(f"""
                         <div style="height: {ROW_HEIGHT}; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; color: {color}; line-height: 1.2;">
-                            <div style="font-size: 1.5rem; font-weight: 900;">{sign}{pct:.2f}%</div>
-                            <div style="font-size: 1.0rem; font-weight: bold; opacity: 0.9;">{sign}${row['profit_val']:.2f}</div>
+                            <div style="font-size: 1.3rem; font-weight: 900;">{sign}{pct:.2f}%</div>
+                            <div style="font-size: 0.95rem; font-weight: bold; opacity: 0.9;">{sign}${row['profit_val']:.2f}</div>
                         </div>
                         """, unsafe_allow_html=True)
                         
                     # 6. 삭제 버튼 (자동 중앙)
                     with c_del:
+                        # 버튼은 별도 CSS 없이도 columns의 vertical_alignment="center" 덕분에
+                        # 위에서 설정한 ROW_HEIGHT(70px)의 정중앙에 위치하게 됩니다.
                         if st.button("🗑️", key=f"del_hist_{row['id']}"):
                             delete_trade(row['id'])
                             st.rerun()
@@ -719,6 +722,7 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
+
 
 
 
