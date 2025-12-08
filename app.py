@@ -524,14 +524,13 @@ try:
         else:
             st.info("현재 보유 중인 자산이 없습니다.")
 
-       # ---------------------------------------------------------------------
-        # [섹션 2] 과거 매매 기록 (History) - 디자인 개선됨
+      # ---------------------------------------------------------------------
+        # [섹션 2] 과거 매매 기록 (History) - 디자인 고도화 (세로 정렬 & 기간 추가)
         # ---------------------------------------------------------------------
         st.markdown(f"#### 📜 과거 매매 기록 ({len(history)}건)")
         
         if history:
             df_hist = pd.DataFrame(history)
-            # 매도 당시 가격 기준 수익률 계산
             df_hist['profit_pct'] = ((df_hist['sell_price'] - df_hist['price']) / df_hist['price']) * 100
             df_hist['profit_val'] = (df_hist['sell_price'] - df_hist['price']) * df_hist['qty']
             df_hist = df_hist.sort_values("sell_date", ascending=False)
@@ -541,56 +540,73 @@ try:
                 color = "#ff4b4b" if pct > 0 else "#4b88ff" # 빨강 / 파랑
                 sign = "+" if pct > 0 else ""
                 
-                # [디자인 변경] 박스(Container) 안에 모든 요소 배치
+                # 보유 기간 계산
+                try:
+                    d1 = datetime.strptime(row['date'], "%Y-%m-%d")
+                    d2 = datetime.strptime(row['sell_date'], "%Y-%m-%d")
+                    hold_days = (d2 - d1).days
+                    period_text = f"({hold_days}일 보유)"
+                except:
+                    period_text = "(-)"
+
+                # 박스 컨테이너
                 with st.container(border=True):
-                    # 컬럼 비율 조절: 티어(1.2) / 날짜(2.5) / 가격(2.0) / 수익(2.0) / 삭제버튼(0.5)
-                    c_tier, c_date, c_price, c_profit, c_del = st.columns([1.2, 2.5, 2.0, 2.0, 0.5])
+                    # [핵심] vertical_alignment="center"를 사용하여 모든 요소 세로 중앙 정렬
+                    # 비율: 티어(1.2) | 날짜(2.5) | 단가(1.8) | 수량(0.8) | 수익(2.2) | 삭제(0.5)
+                    c_tier, c_date, c_price, c_qty, c_profit, c_del = st.columns([1.2, 2.5, 1.8, 0.8, 2.2, 0.5], vertical_alignment="center")
                     
-                    # 1. 티어 (가장 왼쪽, 크게)
+                    # 1. 티어 (중앙 정렬)
                     with c_tier:
                         st.markdown(f"""
-                        <div style="display: flex; align-items: center; height: 100%;">
-                            <span style="font-size: 1.4rem; font-weight: 900;">{row['tier']}</span>
+                        <div style="text-align: center;">
+                            <span style="font-size: 1.5rem; font-weight: 900;">{row['tier']}</span>
                         </div>
                         """, unsafe_allow_html=True)
                         
-                    # 2. 날짜 (바로 오른쪽, 폰트 키움)
+                    # 2. 날짜 & 보유기간 (중앙 정렬)
                     with c_date:
                          st.markdown(f"""
-                        <div style="font-size: 1.05rem; line-height: 1.4;">
-                            <span style="color: gray;">Buy:</span> <strong>{row['date']}</strong><br>
-                            <span style="color: gray;">Sell:</span> <strong>{row['sell_date']}</strong>
+                        <div style="text-align: center; line-height: 1.4;">
+                            <span style="color: gray; font-size: 0.9em;">Buy:</span> <strong>{row['date']}</strong><br>
+                            <span style="color: gray; font-size: 0.9em;">Sell:</span> <strong>{row['sell_date']}</strong><br>
+                            <span style="font-size: 0.85em; color: #555; background-color: #f0f2f6; padding: 2px 6px; border-radius: 4px;">{period_text}</span>
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # 3. 매수/매도 단가 및 수량 (가운데 정렬)
+                    # 3. 매수/매도 단가 (오른쪽 정렬로 숫자 라인 맞춤)
                     with c_price:
                         st.markdown(f"""
-                        <div style="text-align: center; font-size: 1rem;">
-                            <div>매수: ${row['price']:.2f}</div>
-                            <div>매도: <strong>${row['sell_price']:.2f}</strong></div>
-                            <div style="font-size: 0.85em; color: gray; margin-top: 2px;">({row['qty']}주)</div>
+                        <div style="text-align: right; line-height: 1.5;">
+                            <span style="color: gray; font-size: 0.9em;">매수단가:</span> <strong>${row['price']:.2f}</strong><br>
+                            <span style="color: gray; font-size: 0.9em;">매도단가:</span> <strong>${row['sell_price']:.2f}</strong>
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # 4. 수익률 (오른쪽 강조)
+                    # 4. 수량 (중앙 정렬)
+                    with c_qty:
+                        st.markdown(f"""
+                        <div style="text-align: center;">
+                            <span style="color: gray; font-size: 0.9em;">수량</span><br>
+                            <span style="font-size: 1.1rem; font-weight: bold;">{row['qty']}</span><span style="font-size: 0.8em;">주</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # 5. 수익률 & 수익금 (오른쪽 정렬 + 강조)
                     with c_profit:
                         st.markdown(f"""
-                        <div style="text-align: right; color: {color};">
-                            <div style="font-size: 1.4rem; font-weight: bold;">{sign}{pct:.2f}%</div>
-                            <div style="font-weight: bold; font-size: 1rem;">{sign}${row['profit_val']:.2f}</div>
+                        <div style="text-align: right; color: {color}; line-height: 1.2;">
+                            <div style="font-size: 1.5rem; font-weight: 900;">{sign}{pct:.2f}%</div>
+                            <div style="font-size: 1.0rem; font-weight: bold; opacity: 0.9;">{sign}${row['profit_val']:.2f}</div>
                         </div>
                         """, unsafe_allow_html=True)
                         
-                    # 5. 삭제 버튼 (가장 오른쪽)
+                    # 6. 삭제 버튼 (세로 중앙 자동 적용됨)
                     with c_del:
-                        # 세로 중앙 정렬을 위한 여백
-                        st.markdown("<br>", unsafe_allow_html=True)
                         if st.button("🗑️", key=f"del_hist_{row['id']}"):
                             delete_trade(row['id'])
                             st.rerun()
         else:
-            st.caption("아직 완료된 매매 기록이 없습니다.")
+            st.info("아직 완료된 매매 기록이 없습니다.")
     # =========================================================================
     # [PAGE 2] 백테스트 상세 분석
     # =========================================================================
@@ -702,6 +718,7 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
+
 
 
 
