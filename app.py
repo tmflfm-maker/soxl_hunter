@@ -6,7 +6,7 @@ from datetime import datetime
 import json
 import os
 import time
-import uuid # 고유 ID 생성을 위해 추가
+import uuid
 
 # -----------------------------------------------------------------------------
 # 1. 페이지 설정 및 스타일
@@ -124,29 +124,30 @@ def load_wallet():
 def update_cash(strategy_type, amount, action):
     data = load_wallet()
     key = "hunter_cash" if strategy_type == "Hunter" else "blitz_cash"
+    
     if action == "deposit":
         data[key] += amount
     elif action == "buy":
         data[key] -= amount
     elif action == "sell":
         data[key] += amount
+        
     save_json(WALLET_FILE, data)
     return data
 
 # 포트폴리오 로드/저장
 def load_portfolio():
-    # trade_id, date, tier, price, qty, status ('holding', 'sold')
     return load_json(PORTFOLIO_FILE, [])
 
 def add_trade(date, tier, price, qty):
     data = load_portfolio()
     new_trade = {
-        "id": str(uuid.uuid4()), # 고유 ID
+        "id": str(uuid.uuid4()),
         "date": date.strftime("%Y-%m-%d"),
         "tier": tier,
         "price": float(price),
         "qty": int(qty),
-        "status": "holding" # 기본값 보유중
+        "status": "holding"
     }
     data.append(new_trade)
     save_json(PORTFOLIO_FILE, data)
@@ -171,7 +172,7 @@ try:
     df = get_data()
 
     if df is None or len(df) < 2:
-        st.error("📉 야후 파이낸스 연결이 원활하지 않습니다. (3회 재시도 실패). 잠시 후 왼쪽 사이드바의 '데이터/잔고 갱신' 버튼을 눌러주세요.")
+        st.error("📉 야후 파이낸스 연결이 원활하지 않습니다. 잠시 후 왼쪽 사이드바의 '데이터/잔고 갱신' 버튼을 눌러주세요.")
         st.stop()
 
     today = df.iloc[-1]
@@ -334,13 +335,13 @@ try:
         st.caption("※ 거래량 강도: 당일 거래량 / 20일 평균. 1.5배 이상이면 '투매'로 간주하여 신뢰도 상승.")
 
         # =====================================================================
-        # [NEW] 4. 현재 보유 자산 (My Portfolio) - 요청하신 기능 추가
+        # [NEW] 4. 현재 보유 자산 (My Portfolio)
         # =====================================================================
         st.markdown("---")
         st.subheader("💼 현재 보유 자산 (My Portfolio)")
 
         # 4-1. 입력 폼 (Expander로 깔끔하게)
-        with st.expander("➕ 매매 기록 수기 입력 (Trade Log)", expanded=False):
+        with st.expander("➕ 매매 기록 입력 (Trade Log)", expanded=False):
             c_in1, c_in2, c_in3, c_in4, c_in5 = st.columns(5)
             with c_in1:
                 input_date = st.date_input("매수 날짜", datetime.now())
@@ -351,13 +352,36 @@ try:
             with c_in4:
                 input_qty = st.number_input("매수 수량 (주)", min_value=1, step=1)
             with c_in5:
-                st.write("") # 간격 맞추기용
                 st.write("") 
+                st.write("") 
+                
+                # [수정된 부분] 버튼 클릭 시 예수금 연동 로직
                 if st.button("기록 저장"):
                     if input_price > 0 and input_qty > 0:
-                        add_trade(input_date, input_tier, input_price, input_qty)
-                        st.success("저장 완료!")
-                        st.rerun()
+                        total_cost = input_price * input_qty
+                        
+                        # 등급에 따라 차감할 지갑 결정
+                        if "블리츠" in input_tier:
+                            stype = "Blitz"
+                            wallet_key = "blitz_cash"
+                        else:
+                            stype = "Hunter"
+                            wallet_key = "hunter_cash"
+                        
+                        # 잔고 확인
+                        current_wallet = load_wallet()
+                        if current_wallet[wallet_key] >= total_cost:
+                            # 1. 예수금 차감 (buy 액션)
+                            update_cash(stype, total_cost, "buy")
+                            
+                            # 2. 포트폴리오 추가
+                            add_trade(input_date, input_tier, input_price, input_qty)
+                            
+                            st.success(f"매수 완료! {stype} 예수금에서 ${total_cost:,.2f} 차감되었습니다.")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f"잔고가 부족합니다! (필요: ${total_cost:,.2f}, 보유: ${current_wallet[wallet_key]:,.2f})")
                     else:
                         st.error("가격과 수량을 확인하세요.")
 
@@ -365,32 +389,25 @@ try:
         portfolio_data = load_portfolio()
         
         if portfolio_data:
-            # 데이터프레임 변환 및 계산
             pf_df = pd.DataFrame(portfolio_data)
             
             # 현재가 적용 및 수익률 계산
-            # current_price는 위에서 구한 실시간 가격 사용
             pf_df['current_price'] = current_price
             pf_df['profit_pct'] = ((pf_df['current_price'] - pf_df['price']) / pf_df['price']) * 100
             pf_df['profit_val'] = (pf_df['current_price'] - pf_df['price']) * pf_df['qty']
             
-            # 테이블용 데이터 가공
             # 날짜순 정렬
             pf_df = pf_df.sort_values("date", ascending=False)
             
-            # 화면 표시용
             st.markdown(f"#### 💰 총 보유 평가액: :blue[${(pf_df[pf_df['status']=='holding']['current_price'] * pf_df[pf_df['status']=='holding']['qty']).sum():,.2f}]")
 
-            # 각 행을 반복하며 커스텀 표시 (수정/삭제 버튼 때문)
+            # 테이블 출력
             for index, row in pf_df.iterrows():
-                # 색상 결정
                 pct = row['profit_pct']
                 color = "red" if pct > 0 else "blue"
                 sign = "+" if pct > 0 else ""
                 
-                # 카드 형태로 표시
                 with st.container():
-                    # 상태에 따른 스타일
                     bg_color = "rgba(40, 167, 69, 0.1)" if row['status'] == 'holding' else "rgba(108, 117, 125, 0.1)"
                     status_icon = "🟢 보유중" if row['status'] == 'holding' else "⚫ 매도됨"
                     
@@ -404,7 +421,6 @@ try:
                         st.caption(f"수량: {row['qty']}주")
                     with c3:
                         st.markdown(f"현재: **${current_price:.2f}**")
-                        # 보유 중일 때만 수익률 색상 표시
                         if row['status'] == 'holding':
                             st.markdown(f":{color}[**{sign}{pct:.2f}%**]")
                         else:
