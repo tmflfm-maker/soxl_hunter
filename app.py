@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
 import os
 import time
@@ -28,32 +28,38 @@ st.markdown("""
     .stTabs [data-baseweb="tab-list"] { gap: 10px; }
     .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #f0f2f6; border-radius: 4px; gap: 1px; padding-top: 10px; padding-bottom: 10px; }
     .stTabs [aria-selected="true"] { background-color: #4e8cff; color: white; }
-    
-    /* 매도 섹션 스타일 */
-    .sell-section { background-color: rgba(255, 75, 75, 0.1); padding: 10px; border-radius: 5px; border: 1px solid rgba(255, 75, 75, 0.3); }
-    .ts-price { font-weight: bold; color: #ff4b4b; }
 </style>
 """, unsafe_allow_html=True)
 
 check_years = 3
 
 # -----------------------------------------------------------------------------
-# 2. 데이터 가져오기 및 처리
+# 2. 데이터 가져오기 및 처리 (연결 안정성 강화 버전)
 # -----------------------------------------------------------------------------
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=600)
 def get_data():
-    for attempt in range(3):
+    # 최대 5번 재시도하여 데이터 가져오기 성공률 높임
+    for attempt in range(5):
         try:
-            df = yf.download("SOXL", period=f"{check_years}y", interval="1d", progress=False)
+            # [방법 1] Ticker 객체로 시도 (더 안정적)
+            ticker = yf.Ticker("SOXL")
+            df = ticker.history(period=f"{check_years}y", interval="1d")
             
+            # 데이터가 비었으면 [방법 2] download 함수로 재시도
             if df.empty or len(df) < 20:
                 time.sleep(1)
+                df = yf.download("SOXL", period=f"{check_years}y", interval="1d", progress=False)
+
+            # 여전히 비었으면 잠시 대기 후 루프 다시 실행
+            if df.empty or len(df) < 20:
+                time.sleep(2)
                 continue
 
+            # MultiIndex 컬럼 처리
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
             
-            # 기술적 지표 계산
+            # --- 기술적 지표 계산 ---
             df['MA20'] = df['Close'].rolling(window=20).mean()
             df['MA120'] = df['Close'].rolling(window=120).mean()
             df['MA200'] = df['Close'].rolling(window=200).mean()
@@ -127,7 +133,6 @@ def load_wallet():
 
 def update_cash(strategy_type, amount, action):
     data = load_wallet()
-    # 전략 타입 매핑
     if strategy_type == "Blitz" or strategy_type == "블리츠":
         key = "blitz_cash"
     else:
@@ -166,7 +171,6 @@ def delete_trade(trade_id):
     data = [t for t in data if t["id"] != trade_id]
     save_json(PORTFOLIO_FILE, data)
 
-# [수정됨] 매도 처리 함수 (입력받은 매도 단가 사용)
 def sell_trade(trade_id, sell_price):
     data = load_portfolio()
     sold_info = None
@@ -174,9 +178,8 @@ def sell_trade(trade_id, sell_price):
     for t in data:
         if t["id"] == trade_id and t["status"] == "holding":
             t["status"] = "sold"
-            t["sell_price"] = float(sell_price) # 입력받은 가격 저장
+            t["sell_price"] = float(sell_price)
             t["sell_date"] = datetime.now().strftime("%Y-%m-%d")
-            
             sold_info = t
             break
             
@@ -198,14 +201,14 @@ try:
     df = get_data()
 
     if df is None or len(df) < 2:
-        st.error("📉 야후 파이낸스 연결이 원활하지 않습니다. 잠시 후 왼쪽 사이드바의 '데이터/잔고 갱신' 버튼을 눌러주세요.")
+        st.error("📉 야후 파이낸스 연결이 원활하지 않습니다 (5회 재시도 실패). 잠시 후 왼쪽 사이드바의 '데이터/잔고 갱신' 버튼을 눌러주세요.")
         st.stop()
 
     today = df.iloc[-1]
     prev = df.iloc[-2]
     current_price = today['Close']
 
-    # --- [사이드바] 네비게이션 및 자산 관리 ---
+    # --- [사이드바] ---
     st.sidebar.title("🦅 SOXL Hunter V6")
     menu = st.sidebar.radio("📌 메뉴 선택", ["🚀 대시보드 (Signal)", "📊 백테스트 상세 분석"])
     
@@ -250,7 +253,6 @@ try:
         vol_str = "🔥 폭발" if today['Vol_Ratio'] >= 1.5 else "평범"
 
         c1, c2, c3, c4 = st.columns(4)
-        
         with c1:
             st.markdown(f"""
             <div style="text-align: left; line-height: 1.2;">
@@ -314,7 +316,6 @@ try:
                 d_cls, d_title, d_msg = "hold", "💎 DIAMOND: OFF", "조건 미충족"
                 d_act = "-"
                 d_note = f"현재 Sigma: {sig:.2f} (목표 -2.5)"
-
             st.markdown(f"""<div class="signal-box {d_cls}"><div class="big-font">{d_title}</div><p>{d_msg}</p><hr style="margin: 10px 0; border-color: rgba(255,255,255,0.3);"><strong>{d_act}</strong><br><span style="font-size: 0.8em; opacity: 0.8;">{d_note}</span></div>""", unsafe_allow_html=True)
             if cond_silver_base and is_yang:
                  st.markdown("""<div class="signal-box pyramid"><strong>🔥 불타기 찬스</strong><br><span style="font-size:0.8em">다이아 보유중이면 추가매수</span></div>""", unsafe_allow_html=True)
@@ -406,13 +407,10 @@ try:
 
         # 4-2. 포트폴리오 데이터 처리
         portfolio_data = load_portfolio()
-        
         holdings = [t for t in portfolio_data if t['status'] == 'holding']
         history = [t for t in portfolio_data if t['status'] == 'sold']
 
-        # ---------------------------------------------------------------------
         # [섹션 1] 현재 보유 자산 (Holding)
-        # ---------------------------------------------------------------------
         st.markdown(f"#### 🔥 현재 보유 자산 ({len(holdings)}건)")
         
         if holdings:
@@ -433,59 +431,40 @@ try:
                 color = "red" if pct > 0 else "blue"
                 sign = "+" if pct > 0 else ""
                 
-                # --- [핵심] 실시간 청산가(Trailing Stop) 계산 로직 ---
+                # 실시간 청산가(TS) 계산
                 ts_note = ""
-                ts_price = 0.0
-                
                 try:
                     buy_date_str = row['date']
-                    # 매수일 이후의 데이터 조회
                     period_mask = df.index.strftime('%Y-%m-%d') >= buy_date_str
                     period_df = df.loc[period_mask]
-                    
                     if not period_df.empty:
-                        # 매수일 이후 최고 종가 (Peak)
                         peak_price = period_df['Close'].max()
-                        # 오늘 현재가가 더 높다면 Peak 갱신
                         peak_price = max(peak_price, current_price)
                     else:
-                        peak_price = current_price # 데이터 없으면 현재가
+                        peak_price = current_price
                     
-                    # 티어별 로직 적용
                     if "다이아" in row['tier']:
-                        # 5일 의무 보유 체크
                         buy_dt = datetime.strptime(buy_date_str, "%Y-%m-%d")
                         days_held = (datetime.now() - buy_dt).days
                         if days_held < 5:
                             ts_note = f"🔒 5일 의무보유 ({days_held}일차)"
                         else:
-                            ts_price = peak_price * 0.60 # -40%
+                            ts_price = peak_price * 0.60
                             ts_note = f"TS: ${ts_price:.2f} (고점대비 -40%)"
-                    
                     elif "골드" in row['tier']:
-                        ts_price = peak_price * 0.80 # -20%
+                        ts_price = peak_price * 0.80
                         ts_note = f"TS: ${ts_price:.2f} (고점대비 -20%)"
-                        
                     elif "실버" in row['tier']:
-                        ts_price = peak_price * 0.85 # -15%
+                        ts_price = peak_price * 0.85
                         ts_note = f"TS: ${ts_price:.2f} (고점대비 -15%)"
-                        
                     elif "블리츠" in row['tier']:
-                        # 블리츠는 매수가 기준 손절 -15%
                         ts_price = row['price'] * 0.85
                         ts_note = f"Stop: ${ts_price:.2f} (매수가대비 -15%)"
-                    
-                    else:
-                        ts_note = "-"
+                except:
+                    ts_note = "-"
 
-                except Exception as e:
-                    ts_note = "계산 불가"
-
-                # ----------------------------------------------------
-                
-                with st.container():
+                with st.container(border=True):
                     c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1.5, 2.5, 3])
-                    
                     with c1:
                         st.markdown(f"**{row['date']}**")
                         st.caption(f"{row['tier']}")
@@ -499,15 +478,11 @@ try:
                         st.markdown(f"수익률: :{color}[**{sign}{pct:.2f}%**]")
                         st.markdown(f"수익금: :{color}[**{sign}${row['profit_val']:.2f}**]")
                     with c5:
-                        # 매도 섹션 (입력창 + 버튼)
                         with st.container():
-                            # 청산 가이드 표시
                             if ts_note:
-                                st.markdown(f"<span class='ts-price'>⚠️ {ts_note}</span>", unsafe_allow_html=True)
-                            
+                                st.markdown(f"<span style='font-weight:bold; color:#ff4b4b;'>⚠️ {ts_note}</span>", unsafe_allow_html=True)
                             c_sell_in, c_sell_btn, c_del = st.columns([1.5, 1, 0.5])
                             with c_sell_in:
-                                # 매도 단가 입력 (기본값: 현재가)
                                 manual_sell_price = st.number_input("매도단가", value=float(current_price), step=0.01, format="%.2f", label_visibility="collapsed", key=f"sell_input_{row['id']}")
                             with c_sell_btn:
                                 if st.button("매도", key=f"sell_{row['id']}"):
@@ -520,13 +495,10 @@ try:
                                 if st.button("🗑️", key=f"del_{row['id']}"):
                                     delete_trade(row['id'])
                                     st.rerun()
-                    st.markdown("---")
         else:
             st.info("현재 보유 중인 자산이 없습니다.")
 
-      # ---------------------------------------------------------------------
-        # [섹션 2] 과거 매매 기록 (History) - CSS Grid 완벽 정렬 버전 (Final)
-        # ---------------------------------------------------------------------
+        # [섹션 2] 과거 매매 기록 (History) - 디자인 고도화 (CSS Grid)
         st.markdown(f"#### 📜 과거 매매 기록 ({len(history)}건)")
         
         if history:
@@ -548,16 +520,13 @@ try:
                 except:
                     period_text = "(-)"
 
-                # 컨테이너 시작
                 with st.container(border=True):
-                    # [핵심전략] 화면을 [내용 92% : 버튼 8%] 로 딱 두 개만 나눕니다.
-                    # vertical_alignment="center"를 써서 이 두 덩어리의 허리 라인을 맞춥니다.
+                    # [핵심 변경] Streamlit으로 크게 2등분 (내용 9 : 버튼 1)
+                    # 내용 부분은 통짜 HTML(Grid)로 정렬하여 줄 틀어짐 방지
                     c_content, c_btn = st.columns([0.92, 0.08], vertical_alignment="center")
                     
                     with c_content:
-                        # [매직 코드] HTML Grid로 내부 요소들의 줄을 강제로 맞춥니다.
-                        # grid-template-columns: 각 항목의 가로 비율 (티어/날짜/가격/수량/수익)
-                        # align-items: center -> 이게 있으면 무조건 세로 중앙입니다.
+                        # [HTML/CSS Grid] 엑셀 표처럼 칸을 나누어 1px 오차 없이 정렬
                         st.markdown(f"""
                         <div style="
                             display: grid; 
@@ -592,13 +561,13 @@ try:
                         </div>
                         """, unsafe_allow_html=True)
                     
-                    # 버튼은 별도 컬럼에 두어 자동 중앙 정렬 (HTML 높이에 맞춰 자동으로 따라옴)
                     with c_btn:
                         if st.button("🗑️", key=f"del_hist_{row['id']}"):
                             delete_trade(row['id'])
                             st.rerun()
         else:
-            st.info("아직 완료된 매매 기록이 없습니다.")
+            st.caption("아직 완료된 매매 기록이 없습니다.")
+
     # =========================================================================
     # [PAGE 2] 백테스트 상세 분석
     # =========================================================================
@@ -710,8 +679,6 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
-
-
 
 
 
