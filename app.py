@@ -13,7 +13,7 @@ import uuid
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="SOXL Hunter V6", layout="wide")
 
-# 스타일 설정 (박스 높이 고정 및 디자인)
+# 스타일 설정
 st.markdown("""
 <style>
     .signal-box {
@@ -25,20 +25,25 @@ st.markdown("""
         height: 180px; /* 박스 높이 고정 */
         display: flex;
         flex-direction: column;
-        justify-content: space-between;
+        justify-content: center; /* 내용 중앙 정렬 */
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     .diamond { background-color: #6f42c1; border: 2px solid #fff; }
     .gold { background-color: #fd7e14; border: 2px solid #fff; }
     .silver { background-color: #004085; border: 2px solid #fff; }
-    .hold { background-color: #495057; border: 1px dashed #ccc; } /* 회색 배경 */
+    .hold { background-color: #495057; border: 1px dashed #ccc; opacity: 0.9; }
     
-    .big-font { font-size: 1.2rem; font-weight: bold; margin-bottom: 5px; }
-    .desc-text { font-size: 0.9rem; opacity: 0.9; }
-    .action-text { font-size: 1.1rem; font-weight: bold; margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 5px; }
+    .big-font { font-size: 1.4rem; font-weight: 900; margin-bottom: 5px; }
+    .sub-text { font-size: 0.95rem; margin-bottom: 5px; }
+    .action-text { font-size: 1.1rem; font-weight: bold; color: #fff; }
+    .note-text { font-size: 0.8rem; opacity: 0.8; margin-top: 2px; }
     
+    /* 구분선 스타일 */
+    hr.custom-hr { margin: 8px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3); }
+
     .ts-highlight { font-weight: 900; color: #d63384; background-color: #f8d7da; padding: 2px 6px; border-radius: 4px; }
     
-    /* 탭 스타일 조정 */
+    /* 탭 스타일 */
     .stTabs [data-baseweb="tab-list"] { gap: 10px; }
     .stTabs [data-baseweb="tab"] { height: 50px; background-color: #f0f2f6; border-radius: 4px; padding: 10px; }
     .stTabs [aria-selected="true"] { background-color: #4e8cff; color: white; }
@@ -190,7 +195,6 @@ def sell_trade(trade_id, sell_price):
 # 4. 메인 앱 구조
 # -----------------------------------------------------------------------------
 try:
-    # [1. 메뉴 위치 수정] 사이드바 최상단으로 이동
     st.sidebar.title("🦅 Hunter V6 System")
     menu = st.sidebar.radio("📌 메뉴", ["🚀 SOXL 대시보드", "📜 과거 매매 기록", "📊 백테스트"])
     
@@ -220,7 +224,6 @@ try:
     c1.metric("🦅 Hunter", f"${wallet['hunter_cash']:,.0f}")
     c2.metric("⚡ Blitz", f"${wallet['blitz_cash']:,.0f}")
     
-    # [3. 예수금 추가 기능 복구]
     with st.sidebar.expander("💵 예수금 입금/수정"):
         deposit_type = st.radio("계좌 선택", ["Hunter", "Blitz"])
         deposit_amount = st.number_input("입금액 ($)", step=100)
@@ -251,7 +254,7 @@ try:
         with c3: st.markdown(f"**RSI(14)**<br><span style='font-size:24px; font-weight:bold;'>{today['RSI']:.1f}</span>", unsafe_allow_html=True)
         with c4: st.markdown(f"**Volume**<br><span style='font-size:24px; font-weight:bold;'>{today['Vol_Ratio']:.2f}배</span>", unsafe_allow_html=True)
 
-        # [2. 매수 신호 분석 디자인 수정] HTML 박스 형태로 복구
+        # [2. 매수 신호 분석 디자인 수정] 박스+줄긋기 복구
         st.markdown("---")
         st.subheader("📢 매수 신호 분석")
         
@@ -265,40 +268,55 @@ try:
         cond_silver = (rsi < 45) and (today['Pct_B'] < 0.2)
         is_silver = cond_silver and today['Is_Yangbong']
         
-        # 멘트 설정
-        d_title = "💎 DIAMOND"
-        d_cls = "diamond" if is_dia else "hold"
-        d_msg = "조건 충족! 80% 매수" if is_dia else f"Sigma: {sig:.2f} (목표 -2.5)"
-        
-        g_title = "🥇 GOLD"
-        g_cls = "gold" if is_gold else "hold"
-        g_msg = "조건 충족! 50% 매수" if is_gold else f"Sigma: {sig:.2f} (목표 -2.0)"
-        
-        s_title = "🥈 SILVER"
-        s_cls = "silver" if is_silver else "hold"
-        s_msg = "양봉 확인됨! 20% 매수" if is_silver else ("양봉 대기중" if cond_silver else f"RSI: {rsi:.1f} (목표 45↓)")
+        # 멘트 및 상태 설정
+        # 1. 다이아몬드
+        if is_dia:
+            d_cls, d_msg, d_act, d_note = "diamond", "인생 역전 기회", "80% 매수", "5일 강제 보유"
+        else:
+            d_cls, d_msg, d_act, d_note = "hold", "조건 미충족", "-", f"Sigma: {sig:.2f} (목표 -2.5)"
 
-        # HTML 출력
+        # 2. 골드
+        if is_gold:
+            g_cls, g_msg, g_act, g_note = "gold", "강력 과매도 구간", "50% 매수", "트렌드 추종"
+        else:
+            g_cls, g_msg, g_act, g_note = "hold", "조건 미충족", "-", f"Sigma: {sig:.2f} (목표 -2.0)"
+
+        # 3. 실버
+        if is_silver:
+            s_cls, s_msg, s_act, s_note = "silver", "눌림목 반등 확인", "20% 매수", "양봉 확인됨"
+        else:
+            s_cls, s_msg, s_act, s_note = "hold", "조건 미충족", "-", ("양봉 대기중" if cond_silver else f"RSI: {rsi:.1f} (목표 45↓)")
+
+        # HTML 출력 (구분선 hr 추가)
         c_d, c_g, c_s = st.columns(3)
         with c_d:
             st.markdown(f"""
             <div class="signal-box {d_cls}">
-                <div class="big-font">{d_title}</div>
-                <div class="desc-text">{d_msg}</div>
+                <div class="big-font">💎 DIAMOND</div>
+                <div class="sub-text">{d_msg}</div>
+                <hr class="custom-hr">
+                <div class="action-text">{d_act}</div>
+                <div class="note-text">{d_note}</div>
             </div>
             """, unsafe_allow_html=True)
         with c_g:
             st.markdown(f"""
             <div class="signal-box {g_cls}">
-                <div class="big-font">{g_title}</div>
-                <div class="desc-text">{g_msg}</div>
+                <div class="big-font">🥇 GOLD</div>
+                <div class="sub-text">{g_msg}</div>
+                <hr class="custom-hr">
+                <div class="action-text">{g_act}</div>
+                <div class="note-text">{g_note}</div>
             </div>
             """, unsafe_allow_html=True)
         with c_s:
             st.markdown(f"""
             <div class="signal-box {s_cls}">
-                <div class="big-font">{s_title}</div>
-                <div class="desc-text">{s_msg}</div>
+                <div class="big-font">🥈 SILVER</div>
+                <div class="sub-text">{s_msg}</div>
+                <hr class="custom-hr">
+                <div class="action-text">{s_act}</div>
+                <div class="note-text">{s_note}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -345,7 +363,6 @@ try:
                     cols = st.columns([1.5, 1.5, 1.5, 2, 2.5])
                     cols[0].markdown(f"**{t['date']}**\n\n{t['tier']}")
                     cols[1].markdown(f"평단: **${t['price']:.2f}**\n\n수량: **{t['qty']}**")
-                    # [4. TS 강조 적용]
                     cols[2].markdown(f"현재: **${current_price:.2f}**\n\nTS: <span class='ts-highlight'>{ts_txt}</span>", unsafe_allow_html=True)
                     cols[3].markdown(f":{p_color}[**{pct:+.2f}%**]\n\n:{p_color}[**${profit:+.2f}**]")
                     
@@ -355,7 +372,6 @@ try:
                         if b1.button("매도", key=f"s_{t['id']}", type="primary"):
                             sell_trade(t['id'], sell_price)
                             st.rerun()
-                        # [3. 삭제 버튼 빨간색 텍스트 스타일]
                         if b2.button("삭제", key=f"d_{t['id']}"):
                             delete_trade(t['id'])
                             st.rerun()
@@ -363,7 +379,7 @@ try:
             st.info("보유 중인 자산이 없습니다.")
 
     # =========================================================================
-    # [PAGE 2] 과거 매매 기록 (테이블 형식으로 간소화)
+    # [PAGE 2] 과거 매매 기록 (좌측 정렬 + 심플 수익률)
     # =========================================================================
     elif menu == "📜 과거 매매 기록":
         st.title("📜 매매 기록 일지")
@@ -371,14 +387,14 @@ try:
         history = [t for t in portfolio_data if t['status'] == 'sold']
         
         # [4. 총 매매 횟수 왼쪽 정렬]
-        st.markdown(f"### 총 매매 횟수: {len(history)}회")
+        st.markdown(f"### 총 매매 횟수: <span style='color:blue;'>{len(history)}회</span>", unsafe_allow_html=True)
         st.markdown("---")
 
         if history:
             data_list = []
             for t in history:
                 profit = (t['sell_price'] - t['price']) * t['qty']
-                pct = (t['sell_price'] - t['price']) / t['price'] * 100
+                pct = (t['sell_price'] - t['price']) / t['price'] # 100을 곱하지 않고 소수로 유지 (format에서 처리)
                 
                 try:
                     d1 = datetime.strptime(t['date'], "%Y-%m-%d")
@@ -395,14 +411,14 @@ try:
                     "매도단가": t['sell_price'],
                     "수량": t['qty'],
                     "수익금": profit,
-                    "수익률": pct / 100 # 퍼센트 포맷을 위해 소수로 저장
+                    "수익률": pct
                 })
             
             df_hist = pd.DataFrame(data_list)
             
-            # [4. 수익률 숫자와 색상만 표시]
+            # [4. 수익률 숫자와 색상만 표시 (막대 X)]
             def color_surplus(val):
-                color = 'red' if val > 0 else 'blue'
+                color = '#ff4b4b' if val > 0 else '#4b88ff'
                 return f'color: {color}; font-weight: bold;'
 
             st.dataframe(
@@ -410,7 +426,7 @@ try:
                     "매수단가": "${:.2f}",
                     "매도단가": "${:.2f}",
                     "수익금": "${:.2f}",
-                    "수익률": "{:+.2f}%"
+                    "수익률": "{:+.2f}%" # 백분율 포맷팅
                 }).map(color_surplus, subset=['수익률', '수익금']),
                 use_container_width=True,
                 hide_index=True
@@ -424,7 +440,6 @@ try:
     elif menu == "📊 백테스트":
         st.title("📊 과거 수익률 분석")
         
-        # 기존 백테스트 로직
         cond_dia = (df['Sigma'] <= -2.5) & (df['RSI'] < 30) & (df['Vol_Ratio'] >= 1.5)
         cond_gold_std = (df['Sigma'] <= -2.0) & (df['RSI'] < 30) & (df['Vol_Ratio'] >= 1.5)
         cond_gold_dual = (df['Sigma'] <= -1.8) & (df['Sigma60'] <= -2.0)
@@ -481,6 +496,7 @@ try:
 
 except Exception as e:
     st.error(f"오류: {e}")
+
 
 
 
