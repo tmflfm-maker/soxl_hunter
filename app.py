@@ -570,7 +570,7 @@ try:
                         <div style="
                             text-align: center; 
                             line-height: 1.4;
-                            margin-top: 5px;   /* [조절] 날짜 덩어리를 윗줄에서 5px 내림 */
+                            margin-top: 3px;   /* [조절] 날짜 덩어리를 윗줄에서 5px 내림 */
                         ">
                             <span style="color: gray; font-size: 0.9em;">Buy:</span> <strong>{row['date']}</strong><br>
                             <span style="color: gray; font-size: 0.9em;">Sell:</span> <strong>{row['sell_date']}</strong><br>
@@ -585,7 +585,7 @@ try:
                             text-align: right; 
                             line-height: 1.5;
                             padding-right: 10px;
-                            margin-top: 5px;   /* [조절] 가격 덩어리를 윗줄에서 5px 내림 */
+                            margin-top: 8px;   /* [조절] 가격 덩어리를 윗줄에서 5px 내림 */
                         "> 
                             <span style="color: gray; font-size: 0.9em;">매수:</span> <strong>${row['price']:.2f}</strong><br>
                             <span style="color: gray; font-size: 0.9em;">매도:</span> <strong>${row['sell_price']:.2f}</strong>
@@ -597,7 +597,7 @@ try:
                         st.markdown(f"""
                         <div style="
                             text-align: center;
-                            margin-top: 10px;  /* [조절] 수량을 윗줄에서 10px 내림 */
+                            margin-top: 8px;  /* [조절] 수량을 윗줄에서 10px 내림 */
                         ">
                             <span style="color: gray; font-size: 0.9em;">수량</span><br>
                             <span style="font-size: 1.1rem; font-weight: bold;">{row['qty']}</span><span style="font-size: 0.8em;">주</span>
@@ -622,7 +622,7 @@ try:
                     with c_del:
                         # 버튼은 div 스타일로 내리기 어려우므로 투명한 빈 공간(<br>)을 쌓아서 내립니다.
                         # <br> 한 개당 한 줄씩 내려갑니다.
-                        st.markdown("<br>", unsafe_allow_html=True) # [조절] 이 줄을 지우면 위로 가고, 하나 더 복사하면 더 내려갑니다.
+                        
                         if st.button("🗑️", key=f"del_hist_{row['id']}"):
                             delete_trade(row['id'])
                             st.rerun()
@@ -739,6 +739,7 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
+
 
 
 
