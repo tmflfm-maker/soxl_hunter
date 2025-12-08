@@ -570,7 +570,7 @@ try:
                         <div style="
                             text-align: center; 
                             line-height: 1.4;
-                            margin-top: 5px;   /* [조절] 날짜 덩어리를 윗줄에서 5px 내림 */
+                            margin-top: 1px;   /* [조절] 날짜 덩어리를 윗줄에서 5px 내림 */
                         ">
                             <span style="color: gray; font-size: 0.9em;">Buy:</span> <strong>{row['date']}</strong><br>
                             <span style="color: gray; font-size: 0.9em;">Sell:</span> <strong>{row['sell_date']}</strong><br>
@@ -585,7 +585,7 @@ try:
                             text-align: right; 
                             line-height: 1.5;
                             padding-right: 10px;
-                            margin-top: 8px;   /* [조절] 가격 덩어리를 윗줄에서 5px 내림 */
+                            margin-top: 7px;   /* [조절] 가격 덩어리를 윗줄에서 5px 내림 */
                         "> 
                             <span style="color: gray; font-size: 0.9em;">매수:</span> <strong>${row['price']:.2f}</strong><br>
                             <span style="color: gray; font-size: 0.9em;">매도:</span> <strong>${row['sell_price']:.2f}</strong>
@@ -739,6 +739,7 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
+
 
 
 
