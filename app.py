@@ -13,7 +13,7 @@ import uuid
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="SOXL Hunter V6", layout="wide")
 
-# 스타일 설정 (박스 디자인 및 구분선 복구)
+# 스타일 설정
 st.markdown("""
 <style>
     .signal-box {
@@ -22,7 +22,7 @@ st.markdown("""
         margin-bottom: 10px;
         text-align: center;
         color: white;
-        height: 180px; /* 박스 높이 고정 */
+        height: 200px; /* 박스 높이 살짝 늘림 (내용 확보) */
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -31,22 +31,18 @@ st.markdown("""
     .diamond { background-color: #6f42c1; border: 2px solid #fff; }
     .gold { background-color: #fd7e14; border: 2px solid #fff; }
     .silver { background-color: #004085; border: 2px solid #fff; }
-    .blitz { background-color: #28a745; border: 2px solid #fff; }
+    .blitz { background-color: #28a745; border: 2px solid #fff; } /* 블리츠: 초록색 */
     .hold { background-color: #495057; border: 1px dashed #ccc; opacity: 0.9; }
     
-    /* 폰트 및 텍스트 스타일 */
-    .big-font { font-size: 1.4rem; font-weight: 900; margin-bottom: 5px; }
-    .sub-text { font-size: 0.95rem; margin-bottom: 5px; font-weight: normal; }
-    .action-text { font-size: 1.1rem; font-weight: bold; color: #fff; margin-top: 5px; }
-    .note-text { font-size: 0.8rem; opacity: 0.8; margin-top: 2px; }
+    .big-font { font-size: 1.3rem; font-weight: 900; margin-bottom: 5px; }
+    .sub-text { font-size: 0.9rem; margin-bottom: 5px; font-weight: normal; }
+    .action-text { font-size: 1.0rem; font-weight: bold; color: #fff; margin-top: 5px; }
+    .note-text { font-size: 0.75rem; opacity: 0.8; margin-top: 2px; }
     
-    /* [복구] 구분선 스타일 */
     hr.custom-hr { margin: 8px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3); }
 
-    /* TS 강조 스타일 */
     .ts-highlight { font-weight: 900; color: #d63384; background-color: #f8d7da; padding: 2px 6px; border-radius: 4px; }
     
-    /* 탭 스타일 */
     .stTabs [data-baseweb="tab-list"] { gap: 10px; }
     .stTabs [data-baseweb="tab"] { height: 50px; background-color: #f0f2f6; border-radius: 4px; padding: 10px; }
     .stTabs [aria-selected="true"] { background-color: #4e8cff; color: white; }
@@ -198,7 +194,6 @@ def sell_trade(trade_id, sell_price):
 # 4. 메인 앱 구조
 # -----------------------------------------------------------------------------
 try:
-    # 1. 메뉴 위치: 최상단
     st.sidebar.title("🦅 Hunter V6 System")
     menu = st.sidebar.radio("📌 메뉴", ["🚀 SOXL 대시보드", "📜 과거 매매 기록", "📊 백테스트"])
     
@@ -224,11 +219,10 @@ try:
     st.sidebar.header("💰 내 자산 현황")
     st.sidebar.metric("🏆 총 자산 (평가+예수)", f"${total_assets:,.0f}")
     
-    # [수정] 헌터 예수금 밑에 블리츠 예수금 배치 (컬럼 없이 수직 나열)
+    # 예수금 수직 배치
     st.sidebar.metric("🦅 Hunter 예수금", f"${wallet['hunter_cash']:,.0f}")
     st.sidebar.metric("⚡ Blitz 예수금", f"${wallet['blitz_cash']:,.0f}")
     
-    # [수정] 예수금 추가 기능 유지
     with st.sidebar.expander("💵 예수금 입금/수정"):
         deposit_type = st.radio("계좌 선택", ["Hunter", "Blitz"])
         deposit_amount = st.number_input("입금액 ($)", step=100)
@@ -259,7 +253,6 @@ try:
         with c3: st.markdown(f"**RSI(14)**<br><span style='font-size:24px; font-weight:bold;'>{today['RSI']:.1f}</span>", unsafe_allow_html=True)
         with c4: st.markdown(f"**Volume**<br><span style='font-size:24px; font-weight:bold;'>{today['Vol_Ratio']:.2f}배</span>", unsafe_allow_html=True)
 
-        # [수정] 매수 신호 분석: 박스 디자인 복구 (구분선 hr 포함)
         st.markdown("---")
         st.subheader("📢 매수 신호 분석")
         
@@ -274,18 +267,26 @@ try:
         is_silver = cond_silver and today['Is_Yangbong']
         is_blitz = (today['RSI2'] < 5) and (today['Close'] > today['MA200'])
         
-        # 멘트 설정
+        # 멘트 및 상태 설정
+        # 1. 다이아
         if is_dia: d_cls, d_msg, d_act, d_note = "diamond", "인생 역전 기회", "80% 매수", "5일 강제 보유"
         else: d_cls, d_msg, d_act, d_note = "hold", "조건 미충족", "-", f"Sigma: {sig:.2f} (목표 -2.5)"
 
+        # 2. 골드
         if is_gold: g_cls, g_msg, g_act, g_note = "gold", "강력 과매도 구간", "50% 매수", "트렌드 추종"
         else: g_cls, g_msg, g_act, g_note = "hold", "조건 미충족", "-", f"Sigma: {sig:.2f} (목표 -2.0)"
 
+        # 3. 실버
         if is_silver: s_cls, s_msg, s_act, s_note = "silver", "눌림목 반등 확인", "20% 매수", "양봉 확인됨"
         else: s_cls, s_msg, s_act, s_note = "hold", "조건 미충족", "-", ("양봉 대기중" if cond_silver else f"RSI: {rsi:.1f} (목표 45↓)")
 
-        # HTML 출력 (구분선 hr 포함)
-        c_d, c_g, c_s = st.columns(3)
+        # 4. 블리츠 (New)
+        if is_blitz: b_cls, b_msg, b_act, b_note = "blitz", "초단기 급등 노리기", "Blitz 예수금 사용", "RSI(2) < 5 & 상승장"
+        else: b_cls, b_msg, b_act, b_note = "hold", "조건 미충족", "-", f"RSI(2): {today['RSI2']:.1f} (목표 5↓)"
+
+        # HTML 출력 (4단 컬럼 적용)
+        c_d, c_g, c_s, c_b = st.columns(4)
+        
         with c_d:
             st.markdown(f"""
             <div class="signal-box {d_cls}">
@@ -316,10 +317,16 @@ try:
                 <div class="note-text">{s_note}</div>
             </div>
             """, unsafe_allow_html=True)
-
-        # [복구] 블리츠 신호 표시
-        if is_blitz:
-            st.success(f"⚡ **Blitz 신호 발생!** (RSI2 < 5 & 상승장) → 단타 진입 추천 (${wallet['blitz_cash']:,.0f} 사용 가능)")
+        with c_b:
+            st.markdown(f"""
+            <div class="signal-box {b_cls}">
+                <div class="big-font">⚡ BLITZ</div>
+                <div class="sub-text">{b_msg}</div>
+                <hr class="custom-hr">
+                <div class="action-text">{b_act}</div>
+                <div class="note-text">{b_note}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
         st.info("💡 팁: 과거 성과와 15일 수익률 분석을 보려면 사이드바 메뉴에서 **'📊 백테스트 상세 분석'**을 선택하세요.")
 
@@ -381,14 +388,13 @@ try:
             st.info("보유 중인 자산이 없습니다.")
 
     # =========================================================================
-    # [PAGE 2] 과거 매매 기록 (기간 조회 및 통계 추가)
+    # [PAGE 2] 과거 매매 기록
     # =========================================================================
     elif menu == "📜 과거 매매 기록":
         st.title("📜 매매 기록 일지")
         
         history = [t for t in portfolio_data if t['status'] == 'sold']
         
-        # [수정] 기간 조회 필터
         period_option = st.radio("📅 조회 기간", ["전체", "1개월", "3개월", "6개월", "1년"], horizontal=True)
         
         filtered_history = []
@@ -405,7 +411,6 @@ try:
             except:
                 if period_option == "전체": filtered_history.append(t)
 
-        # 통계 계산
         if filtered_history:
             total_profit = 0
             total_invested = 0
@@ -420,15 +425,12 @@ try:
             profit_color = "red" if total_profit >= 0 else "blue"
             sign = "+" if total_profit >= 0 else ""
 
-            # 통계 표시 (상단)
             m1, m2, m3 = st.columns(3)
-            # [수정] 총 매매 횟수 왼쪽 정렬 (markdown 사용)
             m1.markdown(f"<div style='text-align:left;'><h3>총 매매 횟수: {len(filtered_history)}회</h3></div>", unsafe_allow_html=True)
             m2.markdown(f"<div style='text-align:center; font-size:0.9rem; color:gray;'>총 실현 수익금</div><div style='text-align:center; font-size:1.6rem; font-weight:bold; color:{profit_color};'>{sign}${total_profit:,.2f}</div>", unsafe_allow_html=True)
             m3.markdown(f"<div style='text-align:center; font-size:0.9rem; color:gray;'>총 수익률(ROI)</div><div style='text-align:center; font-size:1.6rem; font-weight:bold; color:{roi_color};'>{sign}{total_roi:.2f}%</div>", unsafe_allow_html=True)
             st.markdown("---")
 
-            # 테이블 데이터 구성
             data_list = []
             for t in filtered_history:
                 profit = (t['sell_price'] - t['price']) * t['qty']
@@ -454,7 +456,6 @@ try:
             
             df_hist = pd.DataFrame(data_list)
             
-            # [수정] 수익률 숫자와 색상만 표시 (막대 X)
             def color_surplus(val):
                 color = 'red' if val > 0 else 'blue'
                 return f'color: {color}; font-weight: bold;'
@@ -534,10 +535,6 @@ try:
 
 except Exception as e:
     st.error(f"오류: {e}")
-
-
-
-
 
 
 
