@@ -558,7 +558,7 @@ try:
                         st.markdown(f"""
                         <div style="
                             text-align: center;
-                            margin-top: 15px;  /* [조절] 이 숫자가 클수록 아래로 내려갑니다 (기본 15px) */
+                            margin-top: 10px;  /* [조절] 이 숫자가 클수록 아래로 내려갑니다 (기본 15px) */
                         ">
                             <span style="font-size: 1.5rem; font-weight: 900;">{row['tier']}</span>
                         </div>
@@ -570,7 +570,7 @@ try:
                         <div style="
                             text-align: center; 
                             line-height: 1.4;
-                            margin-top: 3px;   /* [조절] 날짜 덩어리를 윗줄에서 5px 내림 */
+                            margin-top: 5px;   /* [조절] 날짜 덩어리를 윗줄에서 5px 내림 */
                         ">
                             <span style="color: gray; font-size: 0.9em;">Buy:</span> <strong>{row['date']}</strong><br>
                             <span style="color: gray; font-size: 0.9em;">Sell:</span> <strong>{row['sell_date']}</strong><br>
@@ -739,6 +739,7 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
+
 
 
 
