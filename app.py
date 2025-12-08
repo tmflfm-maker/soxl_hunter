@@ -22,7 +22,7 @@ st.markdown("""
         margin-bottom: 10px;
         text-align: center;
         color: white;
-        height: 200px; /* 박스 높이 살짝 늘림 (내용 확보) */
+        height: 180px; /* 박스 높이 고정 */
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -31,13 +31,13 @@ st.markdown("""
     .diamond { background-color: #6f42c1; border: 2px solid #fff; }
     .gold { background-color: #fd7e14; border: 2px solid #fff; }
     .silver { background-color: #004085; border: 2px solid #fff; }
-    .blitz { background-color: #28a745; border: 2px solid #fff; } /* 블리츠: 초록색 */
+    .blitz { background-color: #28a745; border: 2px solid #fff; }
     .hold { background-color: #495057; border: 1px dashed #ccc; opacity: 0.9; }
     
-    .big-font { font-size: 1.3rem; font-weight: 900; margin-bottom: 5px; }
-    .sub-text { font-size: 0.9rem; margin-bottom: 5px; font-weight: normal; }
-    .action-text { font-size: 1.0rem; font-weight: bold; color: #fff; margin-top: 5px; }
-    .note-text { font-size: 0.75rem; opacity: 0.8; margin-top: 2px; }
+    .big-font { font-size: 1.4rem; font-weight: 900; margin-bottom: 5px; }
+    .sub-text { font-size: 0.95rem; margin-bottom: 5px; font-weight: normal; }
+    .action-text { font-size: 1.1rem; font-weight: bold; color: #fff; margin-top: 5px; }
+    .note-text { font-size: 0.8rem; opacity: 0.8; margin-top: 2px; }
     
     hr.custom-hr { margin: 8px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3); }
 
@@ -219,7 +219,6 @@ try:
     st.sidebar.header("💰 내 자산 현황")
     st.sidebar.metric("🏆 총 자산 (평가+예수)", f"${total_assets:,.0f}")
     
-    # 예수금 수직 배치
     st.sidebar.metric("🦅 Hunter 예수금", f"${wallet['hunter_cash']:,.0f}")
     st.sidebar.metric("⚡ Blitz 예수금", f"${wallet['blitz_cash']:,.0f}")
     
@@ -267,26 +266,21 @@ try:
         is_silver = cond_silver and today['Is_Yangbong']
         is_blitz = (today['RSI2'] < 5) and (today['Close'] > today['MA200'])
         
-        # 멘트 및 상태 설정
-        # 1. 다이아
+        # 멘트 설정
         if is_dia: d_cls, d_msg, d_act, d_note = "diamond", "인생 역전 기회", "80% 매수", "5일 강제 보유"
         else: d_cls, d_msg, d_act, d_note = "hold", "조건 미충족", "-", f"Sigma: {sig:.2f} (목표 -2.5)"
 
-        # 2. 골드
         if is_gold: g_cls, g_msg, g_act, g_note = "gold", "강력 과매도 구간", "50% 매수", "트렌드 추종"
         else: g_cls, g_msg, g_act, g_note = "hold", "조건 미충족", "-", f"Sigma: {sig:.2f} (목표 -2.0)"
 
-        # 3. 실버
         if is_silver: s_cls, s_msg, s_act, s_note = "silver", "눌림목 반등 확인", "20% 매수", "양봉 확인됨"
         else: s_cls, s_msg, s_act, s_note = "hold", "조건 미충족", "-", ("양봉 대기중" if cond_silver else f"RSI: {rsi:.1f} (목표 45↓)")
 
-        # 4. 블리츠 (New)
         if is_blitz: b_cls, b_msg, b_act, b_note = "blitz", "초단기 급등 노리기", "Blitz 예수금 사용", "RSI(2) < 5 & 상승장"
         else: b_cls, b_msg, b_act, b_note = "hold", "조건 미충족", "-", f"RSI(2): {today['RSI2']:.1f} (목표 5↓)"
 
-        # HTML 출력 (4단 컬럼 적용)
-        c_d, c_g, c_s, c_b = st.columns(4)
-        
+        # [수정] 3단 배열 (다이아, 골드, 실버)
+        c_d, c_g, c_s = st.columns(3)
         with c_d:
             st.markdown(f"""
             <div class="signal-box {d_cls}">
@@ -317,16 +311,17 @@ try:
                 <div class="note-text">{s_note}</div>
             </div>
             """, unsafe_allow_html=True)
-        with c_b:
-            st.markdown(f"""
-            <div class="signal-box {b_cls}">
-                <div class="big-font">⚡ BLITZ</div>
-                <div class="sub-text">{b_msg}</div>
-                <hr class="custom-hr">
-                <div class="action-text">{b_act}</div>
-                <div class="note-text">{b_note}</div>
-            </div>
-            """, unsafe_allow_html=True)
+        
+        # [수정] 새로운 행에 블리츠 배치
+        st.markdown(f"""
+        <div class="signal-box {b_cls}">
+            <div class="big-font">⚡ BLITZ</div>
+            <div class="sub-text">{b_msg}</div>
+            <hr class="custom-hr">
+            <div class="action-text">{b_act}</div>
+            <div class="note-text">{b_note}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
         st.info("💡 팁: 과거 성과와 15일 수익률 분석을 보려면 사이드바 메뉴에서 **'📊 백테스트 상세 분석'**을 선택하세요.")
 
