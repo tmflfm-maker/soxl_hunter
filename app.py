@@ -368,7 +368,7 @@ try:
                     cols[0].markdown(f"**{t['date']}**\n\n{t['tier']}")
                     cols[1].markdown(f"매수 단가: **${t['price']:.2f}**\n\n수량: **{t['qty']}**")
                     cols[2].markdown(f"현재가: **${current_price:.2f}**\n\nTS: <span class='ts-highlight'>{ts_txt}</span>", unsafe_allow_html=True)
-                    cols[3].markdown(f"수익률::{p_color}[**{pct:+.2f}%**]\n\n수익::{p_color}[**${profit:+.2f}**]")
+                    cols[3].markdown(f"수익률:{p_color}[**{pct:+.2f}%**]\n\n수익:{p_color}[**${profit:+.2f}**]")
                     
                     with cols[4]:
                         sell_price = st.number_input("매도가", value=float(current_price), key=f"p_{t['id']}", label_visibility="collapsed")
@@ -530,6 +530,7 @@ try:
 
 except Exception as e:
     st.error(f"오류: {e}")
+
 
 
 
