@@ -608,7 +608,7 @@ try:
                             text-align: right; 
                             color: {color}; 
                             line-height: 1.2;
-                            margin-top: 1px; /* 수익률을 살짝 아래로 내림 */">
+                            margin-top: -2px; /* 수익률을 살짝 아래로 내림 */">
                             <div style="font-size: 1.5rem; font-weight: 900;">{sign}{pct:.2f}%</div>
                             <div style="font-size: 1.0rem; font-weight: bold; opacity: 0.9;">{sign}${row['profit_val']:.2f}</div>
                         </div>
@@ -734,6 +734,7 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
+
 
 
 
