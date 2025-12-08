@@ -383,13 +383,14 @@ try:
             st.info("보유 중인 자산이 없습니다.")
 
     # =========================================================================
-    # [PAGE 2] 과거 매매 기록
+    # [PAGE 2] 과거 매매 기록 (개별 삭제 기능 추가 & ROI 계산 변경)
     # =========================================================================
     elif menu == "📜 과거 매매 기록":
         st.title("📜 매매 기록 일지")
         
         history = [t for t in portfolio_data if t['status'] == 'sold']
         
+        # 기간 조회 필터
         period_option = st.radio("📅 조회 기간", ["전체", "1개월", "3개월", "6개월", "1년"], horizontal=True)
         
         filtered_history = []
@@ -408,63 +409,71 @@ try:
 
         if filtered_history:
             total_profit = 0
-            total_invested = 0
             for t in filtered_history:
                 buy_amt = t['price'] * t['qty']
                 sell_amt = t['sell_price'] * t['qty']
                 total_profit += (sell_amt - buy_amt)
-                total_invested += buy_amt
             
-            total_roi = (total_profit / total_invested * 100) if total_invested > 0 else 0
+            # [수정] 수익률 = (기간 내 수익금 / 현재 총 자산) * 100
+            # total_assets 변수는 사이드바에서 이미 계산됨
+            total_roi = (total_profit / total_assets * 100) if total_assets > 0 else 0
+            
             roi_color = "red" if total_roi >= 0 else "blue"
             profit_color = "red" if total_profit >= 0 else "blue"
             sign = "+" if total_profit >= 0 else ""
 
+            # 상단 통계
             m1, m2, m3 = st.columns(3)
             m1.markdown(f"<div style='text-align:left;'><h3>총 매매 횟수: {len(filtered_history)}회</h3></div>", unsafe_allow_html=True)
-            m2.markdown(f"<div style='text-align:center; font-size:0.9rem; color:gray;'>총 실현 수익금</div><div style='text-align:center; font-size:1.6rem; font-weight:bold; color:{profit_color};'>{sign}${total_profit:,.2f}</div>", unsafe_allow_html=True)
-            m3.markdown(f"<div style='text-align:center; font-size:0.9rem; color:gray;'>총 수익률(ROI)</div><div style='text-align:center; font-size:1.6rem; font-weight:bold; color:{roi_color};'>{sign}{total_roi:.2f}%</div>", unsafe_allow_html=True)
+            m2.markdown(f"<div style='text-align:center; font-size:0.9rem; color:gray;'>기간 수익금</div><div style='text-align:center; font-size:1.6rem; font-weight:bold; color:{profit_color};'>{sign}${total_profit:,.2f}</div>", unsafe_allow_html=True)
+            m3.markdown(f"<div style='text-align:center; font-size:0.9rem; color:gray;'>총자산 대비 수익률</div><div style='text-align:center; font-size:1.6rem; font-weight:bold; color:{roi_color};'>{sign}{total_roi:.2f}%</div>", unsafe_allow_html=True)
             st.markdown("---")
 
-            data_list = []
+            # [수정] 개별 항목 리스트 (삭제 버튼 추가를 위해 Dataframe 대신 Container 사용)
+            # 날짜 내림차순 정렬 (최신순)
+            filtered_history.sort(key=lambda x: x['sell_date'], reverse=True)
+
             for t in filtered_history:
                 profit = (t['sell_price'] - t['price']) * t['qty']
-                pct = (t['sell_price'] - t['price']) / t['price']
+                pct = (t['sell_price'] - t['price']) / t['price'] * 100
+                p_color = "red" if pct >= 0 else "blue"
+                p_sign = "+" if pct >= 0 else ""
                 
                 try:
                     d1 = datetime.strptime(t['date'], "%Y-%m-%d")
                     d2 = datetime.strptime(t['sell_date'], "%Y-%m-%d")
                     days = (d2 - d1).days
-                except: days = 0
+                    period_text = f"({days}일 보유)"
+                except: period_text = ""
 
-                data_list.append({
-                    "등급": t['tier'],
-                    "매수일": t['date'],
-                    "매도일": t['sell_date'],
-                    "보유": f"{days}일",
-                    "매수단가": t['price'],
-                    "매도단가": t['sell_price'],
-                    "수량": t['qty'],
-                    "수익금": profit,
-                    "수익률": pct
-                })
-            
-            df_hist = pd.DataFrame(data_list)
-            
-            def color_surplus(val):
-                color = 'red' if val > 0 else 'blue'
-                return f'color: {color}; font-weight: bold;'
+                with st.container(border=True):
+                    # 레이아웃: 정보(90%) + 삭제버튼(10%)
+                    c_info, c_del = st.columns([0.9, 0.1], vertical_alignment="center")
+                    
+                    with c_info:
+                        # 보기 좋게 3단 정보 배치
+                        cc1, cc2, cc3 = st.columns([1.5, 2, 1.5])
+                        
+                        # 1. 등급 및 날짜
+                        with cc1:
+                            st.markdown(f"**{t['tier']}**")
+                            st.caption(f"매수: {t['date']}\n\n매도: {t['sell_date']} {period_text}")
+                        
+                        # 2. 가격 및 수량
+                        with cc2:
+                            st.markdown(f"매수: ${t['price']:.2f} → 매도: **${t['sell_price']:.2f}**")
+                            st.caption(f"수량: {t['qty']}주")
+                            
+                        # 3. 수익
+                        with cc3:
+                            st.markdown(f":{p_color}[**{p_sign}{pct:.2f}%**]")
+                            st.markdown(f":{p_color}[**{p_sign}${profit:.2f}**]")
 
-            st.dataframe(
-                df_hist.style.format({
-                    "매수단가": "${:.2f}",
-                    "매도단가": "${:.2f}",
-                    "수익금": "${:.2f}",
-                    "수익률": "{:+.2f}%"
-                }).map(color_surplus, subset=['수익률', '수익금']),
-                use_container_width=True,
-                hide_index=True
-            )
+                    # [수정] 개별 삭제 버튼 구현
+                    with c_del:
+                        if st.button("🗑️", key=f"del_history_{t['id']}"):
+                            delete_trade(t['id'])
+                            st.rerun()
         else:
             st.info("선택한 기간에 해당하는 매매 기록이 없습니다.")
 
@@ -530,6 +539,7 @@ try:
 
 except Exception as e:
     st.error(f"오류: {e}")
+
 
 
 
