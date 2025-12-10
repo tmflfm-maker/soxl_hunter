@@ -88,10 +88,33 @@ def get_data(ticker="SOXL"):
             rs = gain / loss
             df['RSI'] = 100 - (100 / (1 + rs))
             
-            gain2 = (delta.where(delta > 0, 0)).rolling(window=2).mean()
-            loss2 = (-delta.where(delta < 0, 0)).rolling(window=2).mean()
-            rs2 = gain2 / loss2
-            df['RSI2'] = 100 - (100 / (1 + rs2))
+            # ... (이전 코드) ...
+
+            # [수정 전 코드] (단순 이동평균 - 삭제하거나 주석처리)
+            # gain2 = (delta.where(delta > 0, 0)).rolling(window=2).mean()
+            # loss2 = (-delta.where(delta < 0, 0)).rolling(window=2).mean()
+            
+            # [수정 후 코드] (Wilder's Smoothing - 증권사 방식)
+            # 기간(N) 설정
+            period = 2
+            
+            # 1. 상승폭(U)과 하락폭(D) 분리
+            U = delta.where(delta > 0, 0)
+            D = -delta.where(delta < 0, 0)
+            
+            # 2. Wilder's Smoothing (지수 이동평균 적용)
+            # alpha = 1/period 가 Wilder 방식의 핵심입니다.
+            AU = U.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+            AD = D.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+            
+            # 3. RS 계산 (분모가 0일 경우 대비하여 안전장치 추가 불필요, 판다스가 처리함)
+            RS2 = AU / AD
+            
+            # 4. RSI 계산
+            df['RSI2'] = 100 - (100 / (1 + RS2))
+            
+            # (참고) RSI(14)도 똑같이 정교하게 바꾸고 싶다면 period=14로 위 과정을 한 번 더 하시면 됩니다.
+            # ...
             
             df['Return'] = df['Close'].pct_change()
             mean_20 = df['Return'].rolling(window=20).mean()
@@ -567,6 +590,7 @@ try:
 
 except Exception as e:
     st.error(f"오류: {e}")
+
 
 
 
