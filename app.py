@@ -22,7 +22,7 @@ st.markdown("""
         margin-bottom: 10px;
         text-align: center;
         color: white;
-        height: 180px; /* 박스 높이 고정 */
+        height: 180px;
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -52,7 +52,7 @@ st.markdown("""
 check_years = 3
 
 # -----------------------------------------------------------------------------
-# 2. 데이터 가져오기
+# 2. 데이터 가져오기 (RSI 계산 수식 수정됨 - Wilder's Smoothing 적용)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def get_data(ticker="SOXL"):
@@ -72,6 +72,7 @@ def get_data(ticker="SOXL"):
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
             
+            # --- 기술적 지표 계산 ---
             df['MA20'] = df['Close'].rolling(window=20).mean()
             df['MA120'] = df['Close'].rolling(window=120).mean()
             df['MA200'] = df['Close'].rolling(window=200).mean()
@@ -82,40 +83,29 @@ def get_data(ticker="SOXL"):
             denom = (df['BB_Mid'] + (2 * df['BB_Std'])) - df['BB_Lower']
             df['Pct_B'] = np.where(denom == 0, 0, (df['Close'] - df['BB_Lower']) / denom)
 
+            # [수정됨] RSI 계산 로직 (증권사 표준 Wilder's Smoothing 적용)
             delta = df['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
-            df['RSI'] = 100 - (100 / (1 + rs))
             
-            # ... (이전 코드) ...
+            def calculate_rsi(data_delta, window):
+                # 1. 상승폭/하락폭 분리
+                gain = data_delta.where(data_delta > 0, 0)
+                loss = -data_delta.where(data_delta < 0, 0)
+                
+                # 2. 지수이동평균(EWM) 적용 (alpha = 1/window)
+                avg_gain = gain.ewm(alpha=1/window, min_periods=window, adjust=False).mean()
+                avg_loss = loss.ewm(alpha=1/window, min_periods=window, adjust=False).mean()
+                
+                # 3. RS & RSI 계산
+                rs = avg_gain / avg_loss
+                rsi = 100 - (100 / (1 + rs))
+                return rsi
 
-            # [수정 전 코드] (단순 이동평균 - 삭제하거나 주석처리)
-            # gain2 = (delta.where(delta > 0, 0)).rolling(window=2).mean()
-            # loss2 = (-delta.where(delta < 0, 0)).rolling(window=2).mean()
+            # RSI 14, 5, 2 모두 표준 방식으로 계산
+            df['RSI'] = calculate_rsi(delta, 14)
+            df['RSI5'] = calculate_rsi(delta, 5)
+            df['RSI2'] = calculate_rsi(delta, 2)
             
-            # [수정 후 코드] (Wilder's Smoothing - 증권사 방식)
-            # 기간(N) 설정
-            period = 2
-            
-            # 1. 상승폭(U)과 하락폭(D) 분리
-            U = delta.where(delta > 0, 0)
-            D = -delta.where(delta < 0, 0)
-            
-            # 2. Wilder's Smoothing (지수 이동평균 적용)
-            # alpha = 1/period 가 Wilder 방식의 핵심입니다.
-            AU = U.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
-            AD = D.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
-            
-            # 3. RS 계산 (분모가 0일 경우 대비하여 안전장치 추가 불필요, 판다스가 처리함)
-            RS2 = AU / AD
-            
-            # 4. RSI 계산
-            df['RSI2'] = 100 - (100 / (1 + RS2))
-            
-            # (참고) RSI(14)도 똑같이 정교하게 바꾸고 싶다면 period=14로 위 과정을 한 번 더 하시면 됩니다.
-            # ...
-            
+            # Sigma 계산
             df['Return'] = df['Close'].pct_change()
             mean_20 = df['Return'].rolling(window=20).mean()
             std_20 = df['Return'].rolling(window=20).std()
@@ -217,7 +207,7 @@ def sell_trade(trade_id, sell_price):
 # 4. 메인 앱 구조
 # -----------------------------------------------------------------------------
 try:
-    st.sidebar.title("🦅 Soxl Hunter")
+    st.sidebar.title("🦅 Hunter V6 System")
     menu = st.sidebar.radio("📌 메뉴", ["🚀 SOXL 대시보드", "📜 과거 매매 기록", "📊 백테스트"])
     
     # 데이터 로드
@@ -240,10 +230,10 @@ try:
     
     st.sidebar.markdown("---")
     st.sidebar.header("💰 내 자산 현황")
-    st.sidebar.metric("🏆 총 자산 (평가액 + 예수)", f"${total_assets:,.1f}")
+    st.sidebar.metric("🏆 총 자산 (평가+예수)", f"${total_assets:,.0f}")
     
-    st.sidebar.metric("🦅 Hunter 예수금", f"${wallet['hunter_cash']:,.1f}")
-    st.sidebar.metric("⚡ Blitz 예수금", f"${wallet['blitz_cash']:,.1f}")
+    st.sidebar.metric("🦅 Hunter 예수금", f"${wallet['hunter_cash']:,.0f}")
+    st.sidebar.metric("⚡ Blitz 예수금", f"${wallet['blitz_cash']:,.0f}")
     
     with st.sidebar.expander("💵 예수금 입금/수정"):
         deposit_type = st.radio("계좌 선택", ["Hunter", "Blitz"])
@@ -281,7 +271,6 @@ try:
         sig, sig60 = today['Sigma'], today['Sigma60']
         rsi, vol = today['RSI'], today['Vol_Ratio']
         
-        # 조건 로직
         is_dia = (sig <= -2.5) and (rsi < 30) and (vol >= 1.5)
         is_gold = ((sig <= -2.0) and (rsi < 30) and (vol >= 1.5)) or ((sig <= -1.8) and (sig60 <= -2.0))
         is_gold = is_gold and (not is_dia)
@@ -289,11 +278,10 @@ try:
         is_silver = cond_silver and today['Is_Yangbong']
         is_blitz = (today['RSI2'] < 5) and (today['Close'] > today['MA200'])
         
-        # 멘트 설정
         if is_dia: d_cls, d_msg, d_act, d_note = "diamond", "인생 역전 기회", "80% 매수", "5일 강제 보유"
         else: d_cls, d_msg, d_act, d_note = "hold", "조건 미충족", "-", f"Sigma: {sig:.2f} (목표 -2.5)"
 
-        if is_gold: g_cls, g_msg, g_act, g_note = "gold", "강력 과매도 구간", "50% 매수", "추세 추종"
+        if is_gold: g_cls, g_msg, g_act, g_note = "gold", "강력 과매도 구간", "50% 매수", "트렌드 추종"
         else: g_cls, g_msg, g_act, g_note = "hold", "조건 미충족", "-", f"Sigma: {sig:.2f} (목표 -2.0)"
 
         if is_silver: s_cls, s_msg, s_act, s_note = "silver", "눌림목 반등 확인", "20% 매수", "양봉 확인됨"
@@ -302,7 +290,6 @@ try:
         if is_blitz: b_cls, b_msg, b_act, b_note = "blitz", "초단기 급등 노리기", "Blitz 예수금 사용", "RSI(2) < 5 & 상승장"
         else: b_cls, b_msg, b_act, b_note = "hold", "조건 미충족", "-", f"RSI(2): {today['RSI2']:.1f} (목표 5↓)"
 
-        # 3단 배열 (다이아, 골드, 실버)
         c_d, c_g, c_s = st.columns(3)
         with c_d:
             st.markdown(f"""
@@ -335,7 +322,6 @@ try:
             </div>
             """, unsafe_allow_html=True)
         
-        # [수정] 새로운 행에 블리츠 배치
         st.markdown(f"""
         <div class="signal-box {b_cls}">
             <div class="big-font">⚡ BLITZ</div>
@@ -347,6 +333,22 @@ try:
         """, unsafe_allow_html=True)
 
         st.info("💡 팁: 과거 성과와 15일 수익률 분석을 보려면 사이드바 메뉴에서 **'📊 백테스트 상세 분석'**을 선택하세요.")
+
+        # =====================================================================
+        # 차트 섹션
+        # =====================================================================
+        st.markdown("---")
+        st.subheader("📈 주가 & 지표 차트 (6개월)")
+        
+        tab_price, tab_rsi = st.tabs(["💰 주가 (Price)", "📊 RSI (5 vs 14)"])
+        
+        with tab_price:
+            st.line_chart(df['Close'].iloc[-120:], color="#29b5e8")
+            
+        with tab_rsi:
+            rsi_data = df[['RSI5', 'RSI']].iloc[-120:]
+            st.line_chart(rsi_data, color=["#FF4B4B", "#1C83E1"])
+            st.caption("🔴 빨강: RSI(5) - 단기 민감 | 🔵 파랑: RSI(14) - 중기 추세")
 
         st.markdown("---")
         st.subheader("💼 현재 보유 자산")
@@ -389,8 +391,8 @@ try:
                 with st.container(border=True):
                     cols = st.columns([1.5, 1.5, 1.5, 2, 2.5])
                     cols[0].markdown(f"**{t['date']}**\n\n{t['tier']}")
-                    cols[1].markdown(f"매수 단가: **${t['price']:.2f}**\n\n수량: **{t['qty']}**")
-                    cols[2].markdown(f"현재가: **${current_price:.2f}**\n\nTS: <span class='ts-highlight'>{ts_txt}</span>", unsafe_allow_html=True)
+                    cols[1].markdown(f"평단: **${t['price']:.2f}**\n\n수량: **{t['qty']}**")
+                    cols[2].markdown(f"현재: **${current_price:.2f}**\n\nTS: <span class='ts-highlight'>{ts_txt}</span>", unsafe_allow_html=True)
                     cols[3].markdown(f"수익률: <span style='color:{p_color}; font-weight:bold;'>{pct:+.2f}%</span>\n\n수익금: <span style='color:{p_color}; font-weight:bold;'>${profit:+.2f}</span>", unsafe_allow_html=True)
                     
                     with cols[4]:
@@ -406,23 +408,19 @@ try:
             st.info("보유 중인 자산이 없습니다.")
 
     # =========================================================================
-    # [PAGE 2] 과거 매매 기록 (편집 가능 표 & 증권사형 수익률)
+    # [PAGE 2] 과거 매매 기록
     # =========================================================================
     elif menu == "📜 과거 매매 기록":
         st.title("📜 매매 기록 일지 (Trade Log)")
         
-        # 전체 기록 로드
         portfolio_data = load_portfolio()
-        # 매도된 기록만 가져오기
         history = [t for t in portfolio_data if t['status'] == 'sold']
         
-        # 1. 기간 조회 필터
         period_option = st.radio("📅 조회 기간", ["전체", "1개월", "3개월", "6개월", "1년"], horizontal=True)
         
         filtered_history = []
         now = datetime.now()
         
-        # 기간 필터링 로직
         for t in history:
             try:
                 sell_dt = datetime.strptime(t['sell_date'], "%Y-%m-%d")
@@ -434,46 +432,34 @@ try:
             except:
                 if period_option == "전체": filtered_history.append(t)
 
-        # 2. 증권사 방식 수익률 계산 (기간내 총수익 / 기간내 총매수금액)
         if filtered_history:
             period_total_profit = 0
-            period_total_buy_amt = 0 # 매수 원금 합계
+            period_total_buy_amt = 0
             
             for t in filtered_history:
                 buy_amt = t['price'] * t['qty']
                 sell_amt = t['sell_price'] * t['qty']
-                
                 period_total_buy_amt += buy_amt
                 period_total_profit += (sell_amt - buy_amt)
             
-            # 수익률 계산 (매수 원금이 0이면 0%)
             period_roi = (period_total_profit / period_total_buy_amt * 100) if period_total_buy_amt > 0 else 0
-            
             roi_color = "red" if period_roi >= 0 else "blue"
             profit_color = "red" if period_total_profit >= 0 else "blue"
             sign = "+" if period_total_profit >= 0 else ""
 
-            # 상단 통계 표시
             m1, m2, m3 = st.columns(3)
             m1.markdown(f"<div style='text-align:left;'><h3>총 매매: {len(filtered_history)}건</h3></div>", unsafe_allow_html=True)
             m2.markdown(f"<div style='text-align:center; font-size:0.9rem; color:gray;'>실현 수익금</div><div style='text-align:center; font-size:1.6rem; font-weight:bold; color:{profit_color};'>{sign}${period_total_profit:,.2f}</div>", unsafe_allow_html=True)
             m3.markdown(f"<div style='text-align:center; font-size:0.9rem; color:gray;'>기간 수익률</div><div style='text-align:center; font-size:1.6rem; font-weight:bold; color:{roi_color};'>{sign}{period_roi:.2f}%</div>", unsafe_allow_html=True)
             st.markdown("---")
 
-            # 3. 편집 가능한 데이터프레임 생성
-            # 원본 데이터를 수정하기 쉽게 DataFrame으로 변환
             df_hist = pd.DataFrame(filtered_history)
-            
-            # 표시할 컬럼 순서 및 이름 정리
-            # id는 숨기고, 나머지는 한글로 매핑하여 보여줌
-            # (profit 등 계산된 값은 수정해도 의미 없으므로 원본 데이터 위주로 구성)
             edit_df = df_hist[['id', 'date', 'sell_date', 'tier', 'price', 'sell_price', 'qty']].copy()
             edit_df['date'] = pd.to_datetime(edit_df['date']).dt.date
             edit_df['sell_date'] = pd.to_datetime(edit_df['sell_date']).dt.date
             
-            # 사용자에게 보여줄 컬럼명 설정
             column_config = {
-                "id": None, # id는 숨김
+                "id": None,
                 "date": st.column_config.DateColumn("매수일"),
                 "sell_date": st.column_config.DateColumn("매도일"),
                 "tier": st.column_config.SelectboxColumn("등급", options=["💎 다이아", "🥇 골드", "🥈 실버", "⚡ 블리츠", "기타"]),
@@ -484,47 +470,37 @@ try:
 
             st.caption("💡 표의 내용을 더블 클릭하여 직접 수정하거나, 행을 선택해 삭제할 수 있습니다. 수정 후 반드시 아래 '저장' 버튼을 눌러주세요.")
             
-            # [핵심] st.data_editor로 편집 기능 활성화
             edited_data = st.data_editor(
                 edit_df,
                 column_config=column_config,
                 hide_index=True,
                 use_container_width=True,
-                num_rows="dynamic", # 행 추가/삭제 허용
+                num_rows="dynamic",
                 key="history_editor"
             )
 
-            # 4. 수정사항 저장 로직
             if st.button("💾 수정사항 저장 (Save Changes)", type="primary"):
-                # 현재 로드된 전체 포트폴리오 가져오기
                 current_portfolio = load_portfolio()
-                
-                # 'holding' 상태인 것들은 건드리지 않고 그대로 둠
                 holdings = [t for t in current_portfolio if t['status'] == 'holding']
-                
-                # 에디터에서 수정된 데이터들을 딕셔너리 리스트로 변환
                 updated_history = []
                 for index, row in edited_data.iterrows():
                     item = {
-                        "id": row['id'], # ID 유지
+                        "id": row['id'],
                         "date": row['date'].strftime("%Y-%m-%d"),
                         "tier": row['tier'],
                         "price": float(row['price']),
                         "qty": int(row['qty']),
-                        "status": "sold", # 매매기록이므로 sold 고정
+                        "status": "sold",
                         "sell_price": float(row['sell_price']),
                         "sell_date": row['sell_date'].strftime("%Y-%m-%d")
                     }
                     updated_history.append(item)
                 
-                # 기존 holdings + 수정된 history 합쳐서 저장
                 final_data = holdings + updated_history
                 save_json(PORTFOLIO_FILE, final_data)
-                
                 st.success("매매 기록이 성공적으로 수정되었습니다!")
                 time.sleep(1)
                 st.rerun()
-
         else:
             st.info("선택한 기간에 해당하는 매매 기록이 없습니다.")
 
@@ -590,6 +566,7 @@ try:
 
 except Exception as e:
     st.error(f"오류: {e}")
+
 
 
 
