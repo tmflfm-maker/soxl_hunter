@@ -272,7 +272,7 @@ try:
         rsi, vol = today['RSI'], today['Vol_Ratio']
         
         is_dia = (sig <= -2.5) and (rsi < 30) and (vol >= 1.5)
-        is_gold = ((sig <= -2.0) and (rsi < 30) and (vol >= 1.5)) or ((sig <= -1.8) and (sig60 <= -2.0))
+        is_gold = ((sig <= -2.0) and (rsi < 30) and (vol >= 1.5)) 
         is_gold = is_gold and (not is_dia)
         cond_silver = (rsi < 45) and (today['Pct_B'] < 0.2)
         is_silver = cond_silver and today['Is_Yangbong']
@@ -566,6 +566,7 @@ try:
 
 except Exception as e:
     st.error(f"오류: {e}")
+
 
 
 
